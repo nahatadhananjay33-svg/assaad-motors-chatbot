@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<!-- Phase 8H — Media Management admin panel. Plain HTML + JS, no frameworks.
+     Talks to the gated API (/admin/media/*) with the admin key, which stays only
+     in this browser tab. The owner uploads media and marks cars sold here and
+     never touches Supabase or copies a URL. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Media Management — Vasant Oasis</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width: 820px; margin: 28px auto;
+           padding: 0 16px; color: #1f2933; }
+    h1 { font-size: 22px; } h2 { font-size: 16px; color:#243b53; margin:0 0 8px; }
+    .card { border: 1px solid #d9e2ec; border-radius: 10px; padding: 16px 18px; margin: 14px 0; }
+    label { font-size: 13px; color: #486581; display: block; margin: 8px 0 4px; }
+    input[type=text], input[type=password] { width: 100%; padding: 8px; border: 1px solid #bcccdc;
+           border-radius: 6px; box-sizing: border-box; }
+    button { background: #2e75b6; color: #fff; border: 0; border-radius: 6px; padding: 8px 14px;
+             font-size: 14px; cursor: pointer; margin: 2px; }
+    button.secondary { background:#486581; } button.danger { background:#b42318; }
+    button:disabled { background: #9fb3c8; cursor: not-allowed; }
+    table { width:100%; border-collapse: collapse; font-size: 14px; }
+    th, td { text-align:left; padding: 7px 8px; border-bottom: 1px solid #e4e9f0; }
+    tr.sel { background:#ebf3fb; }
+    tr.car { cursor: pointer; }
+    .pill { font-size:11px; padding:2px 8px; border-radius:10px; }
+    .AVAILABLE { background:#e3f9e5; color:#0f5132; }
+    .RESERVED { background:#fff4ce; color:#5c4813; }
+    .SOLD { background:#fde8e8; color:#842029; }
+    #status { margin-top: 12px; padding: 10px 12px; border-radius: 6px; font-size: 14px; display:none; }
+    .ok { background:#e3f9e5; color:#0f5132; display:block !important; }
+    .err { background:#fde8e8; color:#842029; display:block !important; }
+    .info { background:#fff4ce; color:#5c4813; display:block !important; }
+    small { color:#829ab1; } .muted { color:#627d98; font-size:13px; }
+  </style>
+</head>
+<body>
+  <h1>Media Management</h1>
+
+  <!-- Phase 10D: identity comes from the login session (auth_guard.js). Old
+       server/key/username inputs are hidden fields so existing logic still runs. -->
+  <input type="hidden" id="base" /><input type="hidden" id="key" /><input type="hidden" id="user" />
+  <button id="loadBtn" style="display:none;"></button>
+
+  <div class="card">
+    <h2>Vehicles</h2>
+    <p class="muted">Click a car to select it, then use the actions below.</p>
+    <table>
+      <thead><tr><th>Car Number</th><th>Model</th><th>Status</th></tr></thead>
+      <tbody id="rows"><tr><td colspan="3" class="muted">Not loaded yet.</td></tr></tbody>
+    </table>
+  </div>
+
+  <div class="card" id="actions" style="display:none;">
+    <h2>Actions for <span id="selReg">—</span> <span id="selModel" class="muted"></span></h2>
+    <input type="file" id="photoInput" accept=".jpg,.jpeg,.png,.webp" multiple style="display:none;" />
+    <input type="file" id="videoInput" accept=".mp4,.mov" multiple style="display:none;" />
+    <button id="btnPhotos">📷 Upload Photos</button>
+    <button id="btnVideos">🎥 Upload Videos</button>
+    <button id="btnInsta" class="secondary">Add Instagram URL</button>
+    <button id="btnYt" class="secondary">Add YouTube URL</button>
+    <button id="btnSold" class="danger">Mark Sold</button>
+    <div id="status"></div>
+    <p><small>Photos/videos are stored automatically and their links are written into your
+    Excel — no copy-paste. Marking a car sold deletes its media and removes it from the chatbot.</small></p>
+  </div>
+
+<script src="auth_guard.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  // Phase 10D: identity from the login session (auth_guard.js).
+  $("base").value = AUTH.base;
+  $("user").value = AUTH.user;           // lets loadPerms() fire for the session user
+  let selected = null;
+  // Phase 9B deep-link: ?car=<reg> preselects that car after the list loads
+  // (used by the Inventory Dashboard "Media" shortcut). Additive only.
+  let PRESELECT = new URLSearchParams(location.search).get("car");
+
+  const baseUrl = () => AUTH.base;
+  const headers = () => AUTH.headers();
+  function setStatus(msg, cls) { const s = $("status"); s.textContent = msg; s.className = cls; }
+  function remember() { /* Phase 10D: session holds identity — nothing to persist. */ }
+
+  // ── Phase 10C: hide buttons the role cannot use (backend enforces too) ──
+  let PERMS = ["*"];
+  const can = (p) => PERMS.includes("*") || PERMS.includes(p);
+  async function loadPerms() {
+    PERMS = ["*"];
+    if (!$("user").value.trim()) return true;
+    const r = await fetch(baseUrl() + "/admin/users/my_permissions", { headers: headers() });
+    const d = await r.json();
+    if (!r.ok) { setStatus("✗ " + (d.detail || "Access Denied."), "err"); PERMS = []; return false; }
+    PERMS = d.permissions || [];
+    return true;
+  }
+  function applyPerms() {
+    $("btnPhotos").style.display = can("media.photos") ? "" : "none";
+    $("btnVideos").style.display = can("media.videos") ? "" : "none";
+    $("btnInsta").style.display = can("media.links") ? "" : "none";
+    $("btnYt").style.display = can("media.links") ? "" : "none";
+    $("btnSold").style.display = can("media.sold") ? "" : "none";
+  }
+
+  async function loadVehicles() {
+    remember();
+    try {
+      if (!(await loadPerms())) return;
+      if (!can("media.view")) {
+        setStatus("Access Denied — your role cannot use Media Management.", "err");
+        $("rows").innerHTML = '<tr><td colspan="3" class="muted">Access Denied.</td></tr>';
+        return;
+      }
+      applyPerms();
+      const r = await fetch(baseUrl() + "/admin/media/vehicles", { headers: headers() });
+      if (!r.ok) { setStatus("Could not load (" + r.status + "). Check server address and admin key.", "err"); return; }
+      const d = await r.json();
+      const tbody = $("rows"); tbody.innerHTML = "";
+      (d.vehicles || []).forEach(v => {
+        const tr = document.createElement("tr");
+        tr.className = "car";
+        tr.innerHTML = `<td>${v.car_number}</td><td>${v.model || ""}</td>` +
+                       `<td><span class="pill ${v.status}">${v.status}</span></td>`;
+        tr.onclick = () => selectVehicle(v, tr);
+        tbody.appendChild(tr);
+      });
+      if (!d.vehicles || !d.vehicles.length) tbody.innerHTML = '<tr><td colspan="3" class="muted">No vehicles.</td></tr>';
+      if (PRESELECT) {
+        const v = (d.vehicles || []).find(x => x.car_number === PRESELECT);
+        const tr = [...document.querySelectorAll("tr.car")].find(t => t.firstChild.textContent === PRESELECT);
+        if (v && tr) { selectVehicle(v, tr); tr.scrollIntoView({ block: "center" }); }
+        PRESELECT = null;
+      }
+    } catch (e) { setStatus("Network error: " + e.message, "err"); }
+  }
+
+  function selectVehicle(v, tr) {
+    selected = v;
+    document.querySelectorAll("tr.car").forEach(x => x.classList.remove("sel"));
+    tr.classList.add("sel");
+    $("selReg").textContent = v.car_number;
+    $("selModel").textContent = v.model ? "(" + v.model + ")" : "";
+    $("actions").style.display = "block";
+    setStatus("", "");
+  }
+
+  async function uploadFiles(kind, fileList) {
+    if (!selected) return;
+    const files = Array.from(fileList || []);
+    if (!files.length) return;
+    const fd = new FormData();
+    fd.append("car_number", selected.car_number);
+    files.forEach(f => fd.append("file", f, f.name));
+    setStatus("Uploading " + files.length + " " + kind + "…", "info");
+    try {
+      const r = await fetch(baseUrl() + "/admin/media/upload_" + kind, { method: "POST", headers: headers(), body: fd });
+      const d = await r.json();
+      if (r.ok && d.status === "ok") setStatus("✓ " + d.uploaded + " " + kind + " uploaded and saved to Excel.", "ok");
+      else setStatus("✗ " + (d.detail || JSON.stringify(d)), "err");
+    } catch (e) { setStatus("Network error: " + e.message, "err"); }
+  }
+
+  async function addLink(platform) {
+    if (!selected) return;
+    const url = prompt("Paste the " + platform + " link for " + selected.car_number + ":");
+    if (!url) return;
+    setStatus("Saving " + platform + " link…", "info");
+    try {
+      const r = await fetch(baseUrl() + "/admin/media/add_link", {
+        method: "POST", headers: { ...headers(), "Content-Type": "application/json" },
+        body: JSON.stringify({ car_number: selected.car_number, platform, url }) });
+      const d = await r.json();
+      if (r.ok && d.status === "ok") setStatus("✓ " + platform + " link saved.", "ok");
+      else setStatus("✗ " + (d.detail || JSON.stringify(d)), "err");
+    } catch (e) { setStatus("Network error: " + e.message, "err"); }
+  }
+
+  async function markSold() {
+    if (!selected) return;
+    if (!confirm("Mark " + selected.car_number + " (" + (selected.model || "") + ") as SOLD?\n\n" +
+                 "This deletes its photos/videos and removes it from the chatbot. This cannot be undone.")) return;
+    setStatus("Marking sold…", "info");
+    try {
+      const r = await fetch(baseUrl() + "/admin/media/mark_sold", {
+        method: "POST", headers: { ...headers(), "Content-Type": "application/json" },
+        body: JSON.stringify({ car_number: selected.car_number, confirm: true }) });
+      const d = await r.json();
+      if (r.ok && d.status === "ok") {
+        setStatus("✓ Sold. " + d.files_deleted + " media files deleted. Vehicle removed from chatbot.", "ok");
+        $("actions").style.display = "none"; selected = null; loadVehicles();
+      } else setStatus("✗ " + (d.detail || JSON.stringify(d)), "err");
+    } catch (e) { setStatus("Network error: " + e.message, "err"); }
+  }
+
+  $("loadBtn").onclick = loadVehicles;
+  $("btnPhotos").onclick = () => $("photoInput").click();
+  $("btnVideos").onclick = () => $("videoInput").click();
+  $("photoInput").onchange = (e) => uploadFiles("photos", e.target.files);
+  $("videoInput").onchange = (e) => uploadFiles("videos", e.target.files);
+  $("btnInsta").onclick = () => addLink("instagram");
+  $("btnYt").onclick = () => addLink("youtube");
+  $("btnSold").onclick = markSold;
+  loadVehicles();                        // Phase 10D: signed in → load immediately
+</script>
+</body>
+</html>

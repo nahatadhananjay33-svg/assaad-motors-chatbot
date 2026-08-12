@@ -1,0 +1,50 @@
+{
+  "benchmark_500": {
+    "turns_compared": 574,
+    "broad_entry_inventory_turns": 93,
+    "recommendation_coverage_before": "0.0%",
+    "recommendation_coverage_after": "95.7%",
+    "consultative_question_coverage_before": "0.0%",
+    "consultative_question_coverage_after": "95.7%",
+    "dump_text_turns_before": 93,
+    "dump_text_turns_after": 4,
+    "inventory_accuracy": "100.00%",
+    "media_accuracy": "100.00%",
+    "lead_capture_accuracy": "100.00%",
+    "price_accuracy": "100.00%",
+    "followup_memory_turns": 67,
+    "followup_memory_accuracy": "100.00%",
+    "regressions": {
+      "inventory": 0,
+      "media": 0,
+      "lead": 0,
+      "price": 0
+    },
+    "regression_examples": {},
+    "conversations": 500
+  },
+  "full_pilot_log": {
+    "turns_compared": 33740,
+    "broad_entry_inventory_turns": 4034,
+    "recommendation_coverage_before": "0.0%",
+    "recommendation_coverage_after": "92.0%",
+    "consultative_question_coverage_before": "0.0%",
+    "consultative_question_coverage_after": "92.0%",
+    "dump_text_turns_before": 4034,
+    "dump_text_turns_after": 324,
+    "inventory_accuracy": "100.00%",
+    "media_accuracy": "100.00%",
+    "lead_capture_accuracy": "100.00%",
+    "price_accuracy": "100.00%",
+    "followup_memory_turns": 8897,
+    "followup_memory_accuracy": "100.00%",
+    "regressions": {
+      "inventory": 0,
+      "media": 0,
+      "lead": 0,
+      "price": 0
+    },
+    "regression_examples": {},
+    "conversations": 11301
+  }
+}

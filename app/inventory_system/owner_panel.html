@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<!-- Phase 10A — Owner Panel. For the dealership OWNER only.
+     Upload the latest IVR_Sheet.xlsx; everything updates automatically.
+     Exactly two files are kept: one LIVE, one BACKUP. Plain HTML/JS. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Owner Panel — Excel Management</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width: 700px; margin: 30px auto;
+           padding: 0 18px; color: #1f2933; background: #fff; }
+    h1 { font-size: 26px; } h2 { font-size: 19px; margin: 0 0 12px; color: #102a43; }
+    .card { border: 1px solid #d9e2ec; border-radius: 12px; padding: 22px 24px; margin: 18px 0; }
+    label { font-size: 15px; color: #486581; display: block; margin: 10px 0 5px; }
+    input[type=text], input[type=password] { width: 100%; padding: 11px; font-size: 16px;
+           border: 1px solid #bcccdc; border-radius: 8px; box-sizing: border-box; }
+    button { background: #2e75b6; color: #fff; border: 0; border-radius: 8px;
+             padding: 14px 22px; font-size: 17px; cursor: pointer; margin: 4px 4px 0 0; }
+    button.grey { background: #486581; } button.red { background: #b42318; }
+    button:disabled { background: #9fb3c8; cursor: not-allowed; }
+    .row { display: flex; justify-content: space-between; padding: 7px 0; font-size: 16px; }
+    .row b { color: #102a43; }
+    .tag { font-size: 13px; font-weight: 700; padding: 3px 12px; border-radius: 999px; }
+    .tag.live { background: #e3f9e5; color: #0f5132; }
+    .tag.backup { background: #fff4ce; color: #5c4813; }
+    #status { margin-top: 16px; padding: 14px 16px; border-radius: 8px; font-size: 16px; display: none; }
+    .ok  { background: #e3f9e5; color: #0f5132; display: block !important; }
+    .err { background: #fde8e8; color: #842029; display: block !important; }
+    .info{ background: #fff4ce; color: #5c4813; display: block !important; }
+    small { color: #829ab1; font-size: 14px; }
+    .muted { color: #829ab1; font-size: 15px; }
+    input[type=file] { font-size: 15px; margin: 10px 0; }
+    table { width: 100%; border-collapse: collapse; font-size: 15px; }
+    th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid #e9eef4; }
+    th { color: #486581; font-size: 13px; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <h1>Owner Panel</h1>
+  <p class="muted">Upload your latest Excel — the chatbot updates automatically.
+  The system always keeps your current Excel and one backup. Nothing else to manage.</p>
+
+  <!-- Phase 10D: identity comes from the login session; the old server/key/user
+       inputs are gone. Kept as hidden fields so existing logic keeps working. -->
+  <input type="hidden" id="base" /><input type="hidden" id="key" /><input type="hidden" id="user" />
+  <button id="connectBtn" style="display:none;"></button>
+  <div id="denied" style="display:none;"></div>
+
+  <div class="card">
+    <h2>Current Live Excel <span class="tag live">LIVE</span></h2>
+    <div class="row"><span>File name</span><b id="liveName">—</b></div>
+    <div class="row"><span>Upload date</span><b id="liveDate">—</b></div>
+    <div class="row"><span>Vehicles</span><b id="liveCount">—</b></div>
+    <button id="dlLiveBtn" class="grey">⬇ Download this Excel</button>
+  </div>
+
+  <div class="card">
+    <h2>Previous Excel <span class="tag backup">BACKUP</span></h2>
+    <div id="backupBox">
+      <div class="row"><span>File name</span><b id="bkName">—</b></div>
+      <div class="row"><span>Upload date</span><b id="bkDate">—</b></div>
+      <div class="row"><span>Vehicles</span><b id="bkCount">—</b></div>
+      <button id="dlBackupBtn" class="grey">⬇ Download this Excel</button>
+      <button id="rollbackBtn" class="grey">⟲ Restore Previous Excel</button>
+      <button id="deleteBtn" class="red">Delete Backup</button>
+    </div>
+    <div id="noBackup" class="muted" style="display:none;">No backup yet — it is created
+    automatically the first time you upload a new Excel.</div>
+  </div>
+
+  <div class="card">
+    <h2>Upload New Excel</h2>
+    <input type="file" id="file_input" accept=".xlsx" />
+    <br />
+    <button id="uploadBtn" disabled>⬆ Upload</button>
+    <div id="status"></div>
+    <p><small>The file is checked first. If anything is wrong with it, your current
+    inventory stays exactly as it is. The chatbot updates immediately — no restart.</small></p>
+  </div>
+
+  <div class="card">
+    <h2>Upload History</h2>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>File</th><th>Uploaded</th><th>Vehicles</th><th>Status</th></tr></thead>
+        <tbody id="histRows"><tr><td colspan="4" class="muted">Connect to load.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Phase 10B — User Management -->
+  <div class="card">
+    <h2>User Management</h2>
+    <button id="newUserBtn">+ Create User</button>
+    <div id="userForm" style="display:none; margin-top:14px; border-top:1px solid #e9eef4; padding-top:12px;">
+      <div id="ufTitle" style="font-weight:700; margin-bottom:4px;"></div>
+      <label>Full name</label><input type="text" id="uf_name" />
+      <label>Username</label><input type="text" id="uf_username" />
+      <label id="uf_pw_label">Password (min 6 characters)</label>
+      <div id="uf_pwWrap" style="position:relative;">
+        <input type="password" id="uf_password" style="padding-right:46px;" />
+        <button type="button" id="uf_pwToggle" title="Show password" aria-label="Show password"
+          style="position:absolute; top:50%; right:6px; transform:translateY(-50%); width:auto; margin:0;
+                 padding:4px 8px; background:none; color:#486581; border:0; font-size:18px; line-height:1; cursor:pointer;">👁</button>
+      </div>
+      <label>Role</label>
+      <select id="uf_role" style="width:100%;padding:11px;font-size:16px;border:1px solid #bcccdc;border-radius:8px;"></select>
+      <br /><br />
+      <button id="saveUserBtn">Save</button>
+      <button id="cancelUserBtn" class="grey">Cancel</button>
+    </div>
+    <div style="overflow-x:auto; margin-top:14px;">
+      <table>
+        <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Status</th><th>Created</th><th>Actions</th></tr></thead>
+        <tbody id="userRows"><tr><td colspan="6" class="muted">Connect to load.</td></tr></tbody>
+      </table>
+    </div>
+    <div id="ustatus" style="margin-top:12px; padding:12px 14px; border-radius:8px; font-size:15px; display:none;"></div>
+  </div>
+
+  <!-- Phase 10E — Activity Logs (read-only history: who did what, when) -->
+  <div class="card">
+    <h2>Activity Logs</h2>
+    <p class="muted" style="margin-top:0;">A read-only history of every important action. Newest first.
+    Logs cannot be edited or deleted.</p>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px;">
+      <input type="text" id="auditSearch" placeholder="Search — username, vehicle, or action…"
+             style="flex:1; min-width:200px; padding:9px; font-size:15px; border:1px solid #bcccdc; border-radius:8px;" />
+      <button id="auditRefresh" class="grey" style="padding:9px 16px; font-size:15px;">↻ Refresh</button>
+    </div>
+    <div id="auditFilters" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px;"></div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Time</th><th>User</th><th>Role</th><th>Action</th><th>Vehicle</th><th>Status</th></tr></thead>
+        <tbody id="auditRows"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div id="auditCount" class="muted" style="margin-top:10px;"></div>
+  </div>
+
+<script src="auth_guard.js"></script>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  // Phase 10D: the Owner Panel opens ONLY for the Owner account.
+  var OWNER_OK = window.AUTH && AUTH.requireOwner();
+  if (OWNER_OK) {
+    $("base").value = AUTH.base;
+    $("user").value = AUTH.user;          // lets loadPerms() fire for the session user
+  }
+
+  function baseUrl() { return AUTH.base; }
+  function actingHeaders(extra) { return AUTH.headers(extra); }
+  function headers() { return AUTH.headers(); }
+  function jheaders() { return AUTH.jheaders(); }
+  function remember() { /* Phase 10D: nothing to persist — session holds identity. */ }
+
+  // ── Phase 10C: only the Owner may use this panel (Read-Only Manager: view) ──
+  var PERMS = ["*"];
+  function can(p) { return PERMS.indexOf("*") >= 0 || PERMS.indexOf(p) >= 0; }
+  function isOwner() { return PERMS.indexOf("*") >= 0; }
+  function panelCards() { return [].slice.call(document.querySelectorAll(".card")).slice(1); }
+  function applyOwnerPerms() {
+    $("denied").style.display = "none";
+    panelCards().forEach(function (c) { c.style.display = ""; });
+    if (!can("owner.view")) {                       // everyone but Owner + Read-Only Manager
+      panelCards().forEach(function (c) { c.style.display = "none"; });
+      $("denied").style.display = "block";
+      return false;
+    }
+    var writeIds = ["uploadBtn", "file_input", "rollbackBtn", "deleteBtn", "newUserBtn"];
+    writeIds.forEach(function (id) {
+      var el = $(id);
+      if (el) el.style.display = isOwner() ? "" : "none";
+    });
+    return true;
+  }
+  function loadPerms() {
+    PERMS = ["*"];
+    if (!$("user").value.trim()) return Promise.resolve(true);
+    return fetch(baseUrl() + "/admin/users/my_permissions", { headers: headers() })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (x) {
+        if (!x.ok) { PERMS = []; return applyOwnerPerms(); }
+        PERMS = x.d.permissions || [];
+        return applyOwnerPerms();
+      });
+  }
+  function setStatus(msg, cls) { var s = $("status"); s.textContent = msg; s.className = cls; }
+  // Backend stores timestamps in UTC. Show them in the viewer's LOCAL timezone
+  // (e.g. IST) instead of raw UTC. A naive string (no Z / offset) is assumed UTC.
+  function _localFmt(s, withSecs) {
+    if (!s) return "—";
+    var str = String(s);
+    if (!/[zZ]|[+\-]\d\d:?\d\d$/.test(str)) str = str.replace(" ", "T") + "Z";
+    var d = new Date(str);
+    if (isNaN(d.getTime())) return String(s).replace("T", "  ").slice(0, 19);
+    var p = function (n) { return (n < 10 ? "0" : "") + n; };
+    var base = d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate())
+             + "  " + p(d.getHours()) + ":" + p(d.getMinutes());
+    return withSecs ? base + ":" + p(d.getSeconds()) : base;
+  }
+  function fdate(d) { return _localFmt(d, false); }
+
+  function render(d) {
+    var live = d.live || {}, bk = d.backup;
+    $("liveName").textContent = live.file_name || "—";
+    $("liveDate").textContent = fdate(live.uploaded_at);
+    $("liveCount").textContent = (live.vehicle_count != null) ? live.vehicle_count : "—";
+    var has = !!bk;
+    $("backupBox").style.display = has ? "" : "none";
+    $("noBackup").style.display = has ? "none" : "";
+    if (has) {
+      $("bkName").textContent = bk.file_name || "—";
+      $("bkDate").textContent = fdate(bk.uploaded_at);
+      $("bkCount").textContent = (bk.vehicle_count != null) ? bk.vehicle_count : "—";
+    }
+    var rows = [];
+    if (live && live.file_name) rows.push([live.file_name, fdate(live.uploaded_at), live.vehicle_count, "LIVE"]);
+    if (bk) rows.push([bk.file_name, fdate(bk.uploaded_at), bk.vehicle_count, "BACKUP"]);
+    $("histRows").innerHTML = rows.length
+      ? rows.map(function (r) {
+          return "<tr><td>" + r[0] + "</td><td>" + r[1] + "</td><td>" + (r[2] != null ? r[2] : "—")
+               + "</td><td><span class='tag " + (r[3] === "LIVE" ? "live" : "backup") + "'>" + r[3] + "</span></td></tr>";
+        }).join("")
+      : "<tr><td colspan='4' class='muted'>Nothing yet.</td></tr>";
+  }
+
+  function load() {
+    remember();
+    fetch(baseUrl() + "/admin/owner/status", { headers: headers() })
+      .then(function (r) {
+        if (!r.ok) { setStatus("Could not connect (" + r.status + "). Check the address and owner key.", "err"); throw 0; }
+        return r.json();
+      })
+      .then(function (d) { render(d); setStatus("Connected.", "ok"); })
+      .catch(function () {});
+  }
+
+  function upload() {
+    var f = $("file_input").files[0];
+    if (!f) { setStatus("Choose your Excel file first.", "err"); return; }
+    var fd = new FormData(); fd.append("file", f, f.name);
+    $("uploadBtn").disabled = true;
+    setStatus("Checking your Excel…", "info");
+    fetch(baseUrl() + "/admin/owner/upload", { method: "POST", headers: headers(), body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "ok") {
+          setStatus("✓ Inventory Updated Successfully — " + d.vehicles_loaded + " vehicles are now live.", "ok");
+          $("file_input").value = "";
+          load();
+        } else {
+          var msg = d.detail || "Upload failed.";
+          if (d.errors && d.errors.length) msg = d.errors.join("  •  ") + "  (your live inventory was NOT changed)";
+          setStatus("✗ " + msg, "err");
+        }
+      })
+      .catch(function (e) { setStatus("Network problem: " + e.message, "err"); })
+      .finally(function () { $("uploadBtn").disabled = !$("file_input").files[0]; });
+  }
+
+  function rollback() {
+    if (!confirm("Restore the PREVIOUS Excel?\n\nThe backup will become live, and the current file will become the backup.")) return;
+    setStatus("Restoring previous Excel…", "info");
+    fetch(baseUrl() + "/admin/owner/rollback", { method: "POST", headers: jheaders(), body: JSON.stringify({ confirm: true }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "ok") { setStatus("✓ " + d.message + " (" + d.vehicles_loaded + " vehicles live)", "ok"); load(); }
+        else setStatus("✗ " + (d.detail || "Could not restore."), "err");
+      })
+      .catch(function (e) { setStatus("Network problem: " + e.message, "err"); });
+  }
+
+  function downloadExcel(slot) {
+    setStatus("Preparing download…", "info");
+    fetch(baseUrl() + "/admin/owner/download?slot=" + encodeURIComponent(slot), { headers: headers() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status !== "ok") { setStatus("✗ " + (d.detail || "Download failed."), "err"); return; }
+        var bytes = Uint8Array.from(atob(d.content_b64), function (c) { return c.charCodeAt(0); });
+        var blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a"); a.href = url; a.download = d.file_name || "inventory.xlsx";
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        setStatus("✓ Downloaded " + (d.file_name || "Excel"), "ok");
+      })
+      .catch(function (e) { setStatus("Network problem: " + e.message, "err"); });
+  }
+
+  function delBackup() {
+    if (!confirm("Permanently delete the BACKUP Excel?\n\nYour live Excel is not touched. This cannot be undone.")) return;
+    fetch(baseUrl() + "/admin/owner/delete_backup", { method: "POST", headers: jheaders(), body: JSON.stringify({ confirm: true }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "ok") { setStatus("✓ " + d.message, "ok"); load(); }
+        else setStatus("✗ " + (d.detail || "Could not delete."), "err");
+      })
+      .catch(function (e) { setStatus("Network problem: " + e.message, "err"); });
+  }
+
+  // ── Phase 10B: User Management ─────────────────────────────────────────
+  var ROLES = [];
+  var EDIT_USER = null;    // null = create mode, username = edit mode
+  function setUStatus(msg, cls) { var s = $("ustatus"); s.textContent = msg; s.className = cls; }
+  function esc(t) { var d = document.createElement("div"); d.textContent = t == null ? "" : t; return d.innerHTML; }
+
+  function loadUsers() {
+    fetch(baseUrl() + "/admin/users/list", { headers: headers() })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (d) {
+        ROLES = d.roles || [];
+        var rows = (d.users || []).map(function (u) {
+          var isOwner = u.role === "Owner";
+          var act = "";
+          if (!can("users.manage")) {
+            return "<tr><td>" + esc(u.full_name) + "</td><td>" + esc(u.username) + "</td><td>" + esc(u.role) + "</td>"
+                 + "<td><span class='tag " + (u.active ? "live" : "backup") + "'>" + (u.active ? "ACTIVE" : "DISABLED") + "</span></td>"
+                 + "<td>" + (u.created_at || "").slice(0, 10) + "</td><td class='muted'>view only</td></tr>";
+          }
+          act += "<button class='grey ubtn' style='padding:7px 12px;font-size:14px;' onclick=\"editUser('" + esc(u.username) + "','" + esc(u.full_name) + "','" + esc(u.role) + "')\">Edit</button> ";
+          act += "<button class='grey ubtn' style='padding:7px 12px;font-size:14px;' onclick=\"resetPw('" + esc(u.username) + "')\">Reset Password</button> ";
+          if (!isOwner) {
+            act += u.active
+              ? "<button class='ubtn' style='padding:7px 12px;font-size:14px;background:#5c4813;' onclick=\"setActive('" + esc(u.username) + "', false)\">Disable</button> "
+              : "<button class='ubtn' style='padding:7px 12px;font-size:14px;background:#2e7d32;' onclick=\"setActive('" + esc(u.username) + "', true)\">Enable</button> ";
+            act += "<button class='red ubtn' style='padding:7px 12px;font-size:14px;' onclick=\"delUser('" + esc(u.username) + "')\">Delete</button>";
+          }
+          return "<tr><td>" + esc(u.full_name) + "</td><td>" + esc(u.username) + "</td><td>" + esc(u.role) + "</td>"
+               + "<td><span class='tag " + (u.active ? "live" : "backup") + "'>" + (u.active ? "ACTIVE" : "DISABLED") + "</span></td>"
+               + "<td>" + (u.created_at || "").slice(0, 10) + "</td><td style='white-space:nowrap;'>" + act + "</td></tr>";
+        });
+        $("userRows").innerHTML = rows.join("") || "<tr><td colspan='6' class='muted'>No users yet.</td></tr>";
+      })
+      .catch(function () { setUStatus("Could not load users — check connection.", "err"); });
+  }
+
+  function showUserForm(mode, username, name, role) {
+    EDIT_USER = mode === "edit" ? username : null;
+    $("ufTitle").textContent = EDIT_USER ? ("Editing " + username) : "New user";
+    $("uf_name").value = name || "";
+    $("uf_username").value = username || "";
+    $("uf_username").disabled = !!EDIT_USER;
+    $("uf_password").value = "";
+    $("uf_pwWrap").style.display = EDIT_USER ? "none" : "";
+    $("uf_pw_label").style.display = EDIT_USER ? "none" : "";
+    var sel = $("uf_role"); sel.innerHTML = "";
+    ROLES.filter(function (r) { return r !== "Owner"; }).forEach(function (r) {
+      var o = document.createElement("option"); o.value = r; o.textContent = r;
+      if (r === role) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.disabled = role === "Owner";
+    $("userForm").style.display = "block";
+  }
+  window.editUser = function (username, name, role) { showUserForm("edit", username, name, role); };
+
+  function saveUser() {
+    var payload, url;
+    if (EDIT_USER) {
+      url = "/admin/users/update";
+      payload = { username: EDIT_USER, full_name: $("uf_name").value.trim(), role: $("uf_role").value };
+    } else {
+      url = "/admin/users/create";
+      payload = { full_name: $("uf_name").value.trim(), username: $("uf_username").value.trim(),
+                  password: $("uf_password").value, role: $("uf_role").value };
+    }
+    fetch(baseUrl() + url, { method: "POST", headers: jheaders(), body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "ok") { setUStatus("✓ " + d.message, "ok"); $("userForm").style.display = "none"; loadUsers(); }
+        else setUStatus("✗ " + (d.detail || "Failed."), "err");
+      })
+      .catch(function (e) { setUStatus("Network problem: " + e.message, "err"); });
+  }
+
+  window.setActive = function (username, active) {
+    if (!active && !confirm("Disable user '" + username + "'? They keep their account but are marked inactive.")) return;
+    fetch(baseUrl() + "/admin/users/set_active", { method: "POST", headers: jheaders(),
+      body: JSON.stringify({ username: username, active: active }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "ok") { setUStatus("✓ " + d.message, "ok"); loadUsers(); }
+        else setUStatus("✗ " + (d.detail || "Failed."), "err");
+      });
+  };
+
+  window.resetPw = function (username) {
+    var pw = prompt("New password for '" + username + "' (min 6 characters):");
+    if (!pw) return;
+    fetch(baseUrl() + "/admin/users/reset_password", { method: "POST", headers: jheaders(),
+      body: JSON.stringify({ username: username, new_password: pw }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "ok") setUStatus("✓ " + d.message, "ok");
+        else setUStatus("✗ " + (d.detail || "Failed."), "err");
+      });
+  };
+
+  window.delUser = function (username) {
+    if (!confirm("Permanently DELETE user '" + username + "'?\n\nThis cannot be undone.")) return;
+    fetch(baseUrl() + "/admin/users/delete", { method: "POST", headers: jheaders(),
+      body: JSON.stringify({ username: username }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "ok") { setUStatus("✓ " + d.message, "ok"); loadUsers(); }
+        else setUStatus("✗ " + (d.detail || "Failed."), "err");
+      });
+  };
+
+  $("newUserBtn").onclick = function () {
+    if (!ROLES.length) { setUStatus("Connect first.", "err"); return; }
+    showUserForm("create");
+  };
+  $("uf_pwToggle").onclick = function () {
+    var p = $("uf_password"), show = p.type === "password";
+    p.type = show ? "text" : "password";
+    this.textContent = show ? "🙈" : "👁";
+    this.title = show ? "Hide password" : "Show password";
+    p.focus();
+  };
+  $("saveUserBtn").onclick = saveUser;
+  $("cancelUserBtn").onclick = function () { $("userForm").style.display = "none"; };
+
+  // ── Phase 10E: Activity Logs (read-only) ──────────────────────────────────
+  var AUDIT_FILTERS = ["All", "Inventory", "Media", "Users", "Excel", "Login"];
+  var AUDIT_CAT = "All";
+  function fauditTime(t) { return _localFmt(t, true); }
+  function renderAuditFilters() {
+    $("auditFilters").innerHTML = AUDIT_FILTERS.map(function (f) {
+      var on = f === AUDIT_CAT;
+      return "<button class='afilter' data-f='" + f + "' style='padding:7px 14px;font-size:14px;"
+           + "background:" + (on ? "#2e75b6" : "#e4ebf2") + ";color:" + (on ? "#fff" : "#243b53")
+           + ";border:0;border-radius:8px;cursor:pointer;'>" + f + "</button>";
+    }).join("");
+    [].slice.call(document.querySelectorAll(".afilter")).forEach(function (b) {
+      b.onclick = function () { AUDIT_CAT = b.dataset.f; renderAuditFilters(); loadAudit(); };
+    });
+  }
+  function loadAudit() {
+    var params = [];
+    if (AUDIT_CAT && AUDIT_CAT !== "All") params.push("category=" + encodeURIComponent(AUDIT_CAT));
+    var q = $("auditSearch").value.trim();
+    if (q) params.push("search=" + encodeURIComponent(q));
+    var url = baseUrl() + "/admin/audit/list" + (params.length ? "?" + params.join("&") : "");
+    fetch(url, { headers: headers() })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (x) {
+        if (!x.ok) {
+          $("auditRows").innerHTML = "<tr><td colspan='6' class='muted'>"
+            + esc(x.d.detail || "Could not load logs.") + "</td></tr>";
+          $("auditCount").textContent = ""; return;
+        }
+        var evs = x.d.events || [];
+        $("auditRows").innerHTML = evs.length ? evs.map(function (e) {
+          var stOk = (e.status === "success");
+          return "<tr><td style='white-space:nowrap;'>" + esc(fauditTime(e.ts)) + "</td>"
+               + "<td>" + esc(e.username || "—") + "</td>"
+               + "<td>" + esc(e.role || "—") + "</td>"
+               + "<td>" + esc(e.action || "—") + "</td>"
+               + "<td>" + esc(e.vehicle || "—") + "</td>"
+               + "<td><span class='tag " + (stOk ? "live" : "backup") + "'>"
+               + (stOk ? "OK" : "FAILED") + "</span></td></tr>";
+        }).join("") : "<tr><td colspan='6' class='muted'>No matching activity.</td></tr>";
+        $("auditCount").textContent = "Showing " + evs.length + " event" + (evs.length === 1 ? "" : "s")
+          + (AUDIT_CAT !== "All" ? " · filter: " + AUDIT_CAT : "") + (q ? " · search: “" + q + "”" : "");
+      })
+      .catch(function (e) {
+        $("auditRows").innerHTML = "<tr><td colspan='6' class='muted'>Network problem: " + esc(e.message) + "</td></tr>";
+      });
+  }
+  var _auditTimer = null;
+  $("auditSearch").addEventListener("input", function () {
+    clearTimeout(_auditTimer); _auditTimer = setTimeout(loadAudit, 250);
+  });
+  $("auditRefresh").onclick = loadAudit;
+
+  var _origLoad = load;
+  load = function () {
+    remember();
+    loadPerms().then(function (allowed) {
+      if (allowed === false) return;               // Access Denied — nothing loads
+      _origLoad(); loadUsers(); renderAuditFilters(); loadAudit();
+    });
+  };
+
+  $("connectBtn").onclick = load;
+  $("uploadBtn").onclick = upload;
+  $("rollbackBtn").onclick = rollback;
+  $("deleteBtn").onclick = delBackup;
+  $("dlLiveBtn").onclick = function () { downloadExcel("live"); };
+  $("dlBackupBtn").onclick = function () { downloadExcel("backup"); };
+  $("file_input").addEventListener("change", function () { $("uploadBtn").disabled = !$("file_input").files[0]; });
+  if (OWNER_OK) load();                 // Phase 10D: signed in as Owner → load immediately
+</script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <meta http-equiv="Pragma" content="no-cache" />
+  <meta http-equiv="Expires" content="0" />
+  <title>Vasant Oasis Cars — Chatbot Widget Demo</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      margin: 0; color: #1b2733; background: #eef2f7; }
+    .hero { background: linear-gradient(135deg, #0b5cab, #0a3f78); color: #fff;
+      padding: 64px 24px; text-align: center; }
+    .hero h1 { margin: 0 0 8px; font-size: 30px; }
+    .hero p { margin: 0; opacity: .9; }
+    .wrap { max-width: 760px; margin: -32px auto 40px; background: #fff; border-radius: 16px;
+      box-shadow: 0 12px 40px rgba(16,38,64,.12); padding: 28px 30px; }
+    h2 { font-size: 18px; margin-top: 26px; }
+    code, pre { background: #f3f6fa; border: 1px solid #e3e9f0; border-radius: 8px; }
+    code { padding: 2px 6px; font-size: 13px; }
+    pre { padding: 14px; overflow-x: auto; font-size: 13px; line-height: 1.5; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+    .row button { border: 1px solid #0b5cab; background: #fff; color: #0b5cab; cursor: pointer;
+      border-radius: 999px; padding: 8px 14px; font-size: 13px; }
+    .row button:hover { background: #0b5cab; color: #fff; }
+    .cfg { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin: 12px 0; }
+    .cfg label { font-size: 12px; color: #65788a; display: flex; flex-direction: column; gap: 4px; }
+    .cfg input { padding: 8px 10px; border: 1px solid #e3e9f0; border-radius: 8px; font: inherit; }
+    .note { font-size: 13px; color: #65788a; background: #f8fafc; border-left: 3px solid #0b5cab;
+      padding: 10px 14px; border-radius: 0 8px 8px 0; }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>🚗 Vasant Oasis Cars</h1>
+    <p>Quality used cars — Andheri East, Mumbai</p>
+  </div>
+
+  <div class="wrap">
+    <h2>Live demo</h2>
+    <p>The chat bubble is at the bottom-right. It talks to your running backend
+       <code>/chat</code> API. Set the API URL to match your server, then try a prompt.</p>
+
+    <div class="cfg">
+      <label>Backend API URL
+        <input id="apiUrl" value="https://rows-pine-llp-listprice.trycloudflare.com" size="30" />
+      </label>
+      <button onclick="reloadWidget()">Apply &amp; reload widget</button>
+    </div>
+
+    <div class="note">
+      Default dev backend: run <code>python chat_api.py</code> in
+      <code>inventory_system/</code> (serves on <code>:8000</code>, no auth, CORS&nbsp;<code>*</code>).
+    </div>
+
+    <h2>Try these (EN / Hindi / Hinglish / Marathi)</h2>
+    <div class="row">
+      <button onclick="ask('SUV under 10 lakh')">SUV under 10 lakh</button>
+      <button onclick="ask('Swift available hai?')">Swift available hai?</button>
+      <button onclick="ask('7 seater diesel automatic')">7-seater diesel automatic</button>
+      <button onclick="ask('Fortuner ची किंमत किती आहे?')">Marathi: Fortuner price?</button>
+      <button onclick="ask('send me photos of the Innova')">Photos of Innova</button>
+      <button onclick="ask('timing kya hai?')">Showroom timing?</button>
+    </div>
+
+    <h2>Embed on any site — one script tag</h2>
+<pre>&lt;script src="https://your-cdn/website_widget/widget.js"
+        data-api-url="https://api.yourdealership.com"
+        data-title="Vasant Oasis Cars"
+        data-greeting="Namaste! Ask me about our cars 🚗"
+        data-accent="#0b5cab"
+        data-position="right"&gt;&lt;/script&gt;</pre>
+    <p class="note">No other includes needed — <code>widget.js</code> auto-loads
+       <code>widget.css</code> from the same folder and mounts itself.</p>
+  </div>
+
+  <!-- ===== The widget: one script tag (loaded dynamically here for the demo) ===== -->
+  <script>
+    function mountWidget(apiUrl) {
+      // for the demo we (re)mount; on a real site this is just the static <script> tag.
+      window.__vocWidgetLoaded = false;
+      var old = document.getElementById("voc-root"); if (old) old.remove();
+      var oldCss = document.getElementById("voc-css"); if (oldCss) oldCss.remove();
+      var prev = document.getElementById("voc-script"); if (prev) prev.remove();
+      var s = document.createElement("script");
+      s.id = "voc-script";
+      s.src = "widget.js?v=20260612";
+      s.setAttribute("data-api-url", apiUrl);
+      s.setAttribute("data-title", "Vasant Oasis Cars");
+      s.setAttribute("data-subtitle", "Andheri East, Mumbai");
+      s.setAttribute("data-accent", "#0b5cab");
+      s.setAttribute("data-position", "right");
+      document.body.appendChild(s);
+    }
+    function reloadWidget() { mountWidget(document.getElementById("apiUrl").value.trim()); }
+    function ask(t) {
+      if (window.VOCWidget) window.VOCWidget.send(t);
+      else alert("Widget not loaded yet — set the API URL and reload.");
+    }
+    mountWidget(document.getElementById("apiUrl").value.trim());
+  </script>
+</body>
+</html>

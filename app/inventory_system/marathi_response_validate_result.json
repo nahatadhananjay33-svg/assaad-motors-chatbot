@@ -1,0 +1,21 @@
+{
+  "conversations": 1901,
+  "before": {
+    "total": 3357,
+    "pure": 1002,
+    "mixed": 0,
+    "hindi_hinglish": 2355,
+    "neutral": 0,
+    "marathi_reply_pct": 29.8,
+    "pure_pct": 29.8
+  },
+  "after": {
+    "total": 3357,
+    "pure": 3357,
+    "mixed": 0,
+    "hindi_hinglish": 0,
+    "neutral": 0,
+    "marathi_reply_pct": 100.0,
+    "pure_pct": 100.0
+  }
+}

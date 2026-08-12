@@ -1,0 +1,19 @@
+{
+  "conversations": 1985,
+  "before": {
+    "followups_ctx": 1329,
+    "pass": 868,
+    "fail": 461,
+    "dump": 1062,
+    "noctx": 1163,
+    "pass_rate": 65.3
+  },
+  "after": {
+    "followups_ctx": 1347,
+    "pass": 1346,
+    "fail": 1,
+    "dump": 0,
+    "noctx": 1145,
+    "pass_rate": 99.9
+  }
+}

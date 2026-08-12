@@ -1,0 +1,23 @@
+{
+  "conversations": 1965,
+  "before": {
+    "photo_total": 1810,
+    "photo_direct": 626,
+    "photo_crisp": 0,
+    "photo_clarify": 1108,
+    "video_total": 576,
+    "video_direct": 171,
+    "video_crisp": 0,
+    "video_clarify": 371
+  },
+  "after": {
+    "photo_total": 1810,
+    "photo_direct": 626,
+    "photo_crisp": 626,
+    "photo_clarify": 1108,
+    "video_total": 576,
+    "video_direct": 171,
+    "video_crisp": 171,
+    "video_clarify": 371
+  }
+}

@@ -1,0 +1,65 @@
+# ── secrets & credentials — NEVER commit ──
+.env
+.env.*
+!.env.example
+!.env.production.example
+*.key
+*.pem
+*.crt
+
+# Claude Code / editor / machine-specific config (may contain env values / keys)
+.claude/
+.vscode/
+.idea/
+
+# dev reports that reference secret config (contain partial keys)
+supabase_*.md
+
+# ── large binaries / platform tools ──
+*.exe
+cloudflared.exe
+
+# ── logs / runtime data / databases ──
+*.log
+*.db
+data/
+app/inventory_system/data/
+**/owner_panel_meta.json
+resp.json
+intent_analytics.json
+
+# ── backups ──
+backups/
+app/inventory_backups/
+app/_old_inventory_backups/
+*_backup_*.xlsx
+*_BACKUP*.xlsx
+*_SAFE_COPY*.xlsx
+*_pre_cleanup_backup*.xlsx
+IVR_Sheet_TEST.xlsx
+IVR_Sheet.phase*.xlsx
+
+# ── dummy / one-off working inventory artifacts ──
+DUMMY_INVENTORY_*.xlsx
+Assad_Motors_CORRECTED_*.xlsx
+duplicate_inventory_report.xlsx
+
+# ── TLS material for the reverse proxy ──
+deployment/certs/
+deployment/certbot-webroot/
+deploy/certs/
+deploy/certbot-webroot/
+
+# ── uploads / scratch ──
+Uploads/
+
+# ── python ──
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# dev reports referencing secret bucket/key config
+bucket_*.md

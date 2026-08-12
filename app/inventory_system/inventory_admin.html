@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<!-- Phase 9C — Dynamic Inventory Dashboard. Plain HTML + JS, no frameworks.
+     The Add/Edit/View form is generated DYNAMICALLY from the Excel columns
+     (GET /admin/inventory/schema). Add a column to the Excel → it appears here
+     automatically. Excel stays the single source of truth. Reuses the gated API
+     and the existing media page; touches no chatbot/media/Supabase logic. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inventory Dashboard — Vasant Oasis</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width: 1120px; margin: 24px auto;
+           padding: 0 16px; color: #1f2933; }
+    h1 { font-size: 22px; } h2 { font-size: 15px; color:#243b53; margin:0 0 10px; }
+    .card { border: 1px solid #d9e2ec; border-radius: 10px; padding: 16px 18px; margin: 14px 0; }
+    label { font-size: 13px; color: #486581; display: block; margin: 8px 0 4px; }
+    input[type=text], input[type=password], select { width: 100%; padding: 8px; border: 1px solid #bcccdc;
+           border-radius: 6px; box-sizing: border-box; }
+    button { background: #2e75b6; color: #fff; border: 0; border-radius: 6px; padding: 8px 14px;
+             font-size: 14px; cursor: pointer; margin: 2px; }
+    button.secondary { background:#486581; } button.green { background:#2e7d32; }
+    button.purple { background:#6a1b9a; } button.danger { background:#b42318; }
+    button.ghost { background:#e4ebf2; color:#243b53; } button.teal { background:#0e7490; }
+    button.active { outline: 3px solid #9ec5fe; }
+    button:disabled { background: #cbd5e0; cursor: not-allowed; }
+    .summary { display:grid; grid-template-columns: repeat(3, 1fr); gap:10px; }
+    .stat { background:#f7fafc; border:1px solid #e4e9f0; border-radius:8px; padding:10px 12px; }
+    .stat .n { font-size:22px; font-weight:700; color:#102a43; }
+    .stat .l { font-size:12px; color:#627d98; }
+    .toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+    .toolbar input[type=text]{ flex:1; min-width:180px; }
+    .toolbar select { width:auto; }
+    table { width:100%; border-collapse: collapse; font-size: 13.5px; }
+    th, td { text-align:left; padding: 7px 8px; border-bottom: 1px solid #e9eef4; white-space:nowrap; }
+    th { color:#486581; font-size:12px; text-transform:uppercase; letter-spacing:.02em; }
+    tbody tr:hover { background:#f7fafc; }
+    .pill { font-size:11px; padding:2px 8px; border-radius:10px; }
+    .AVAILABLE { background:#e3f9e5; color:#0f5132; }
+    .RESERVED { background:#fff4ce; color:#5c4813; }
+    .SOLD { background:#fde8e8; color:#842029; }
+    .rowbtn { padding:4px 9px; font-size:12px; }
+    fieldset { border:1px solid #d9e2ec; border-radius:8px; margin:12px 0; padding:10px 14px; }
+    legend { font-size:13px; font-weight:700; color:#334e68; padding:0 6px; }
+    .grid2 { display:grid; grid-template-columns: 1fr 1fr; gap:6px 14px; }
+    #mstatus { margin-top: 12px; padding: 10px 12px; border-radius: 6px; font-size: 14px; display:none; }
+    .ok { background:#e3f9e5; color:#0f5132; display:block !important; }
+    .err { background:#fde8e8; color:#842029; display:block !important; }
+    .info { background:#fff4ce; color:#5c4813; display:block !important; }
+    small, .muted { color:#829ab1; font-size:13px; }
+    details { margin-top:12px; } summary { cursor:pointer; color:#486581; }
+  </style>
+</head>
+<body>
+  <h1>Inventory Dashboard</h1>
+
+  <!-- Phase 10D: identity comes from the login session (auth_guard.js). The old
+       server/key/username inputs are hidden fields so existing logic still runs. -->
+  <input type="hidden" id="base" /><input type="hidden" id="key" /><input type="hidden" id="user" />
+  <button id="connectBtn" style="display:none;"></button>
+
+  <div class="card summary" id="summary">
+    <div class="stat"><div class="n" id="s_live">—</div><div class="l">Cars Live</div></div>
+    <div class="stat"><div class="n" id="s_avail">—</div><div class="l">Available</div></div>
+    <div class="stat"><div class="n" id="s_reserved">—</div><div class="l">Reserved</div></div>
+    <div class="stat"><div class="n" id="s_sold">—</div><div class="l">Sold</div></div>
+    <div class="stat"><div class="n" id="s_updated" style="font-size:14px;">—</div><div class="l">Last Updated</div></div>
+    <div class="stat"><div class="n" id="s_file" style="font-size:14px;">—</div><div class="l">Current Excel File</div></div>
+  </div>
+
+  <div class="card">
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="Search — reg, model, or brand (Maruti finds MARU)…" />
+      <button class="ghost filter active" data-f="ALL">All</button>
+      <button class="ghost filter" data-f="AVAILABLE">Available</button>
+      <button class="ghost filter" data-f="RESERVED">Reserved</button>
+      <button class="ghost filter" data-f="SOLD">Sold</button>
+      <select id="sortKey" title="Sort by">
+        <option value="">Sort: none</option>
+        <option value="price">Price</option>
+        <option value="year">Year</option>
+        <option value="km">KM</option>
+        <option value="last_updated">Last Updated</option>
+      </select>
+      <button id="sortDir" class="ghost" title="Toggle direction">▼ Desc</button>
+      <button id="refreshBtn" class="secondary">↻ Refresh</button>
+      <button id="addBtn" class="purple">+ Add New Car</button>
+      <button id="dupBtn" class="teal">Duplicate Audit</button>
+    </div>
+    <div id="mstatus"></div>
+  </div>
+
+  <div class="card" id="formCard" style="display:none;">
+    <h2 id="formTitle"></h2>
+    <div id="formGroups"></div>
+    <button id="saveCarBtn" class="green" style="margin-top:12px;">Save</button>
+    <button id="cancelCarBtn" class="ghost" style="margin-top:12px;">Close</button>
+  </div>
+
+  <div class="card">
+    <h2>Vehicles (<span id="shown">0</span>)</h2>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>Registration</th><th>Brand</th><th>Model</th><th>Year</th>
+          <th>KM</th><th>Price</th><th>Status</th><th>Last Updated</th><th>Actions</th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="9" class="muted">Connect to load inventory.</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <details>
+    <summary>Advanced — replace the whole workbook (old upload method)</summary>
+    <div class="card">
+      <label>Update inventory — choose your IVR_Sheet.xlsx</label>
+      <input type="file" id="file_input" accept=".xlsx" />
+      <br /><button id="uploadBtn" disabled>Upload &amp; Update</button>
+      <p><small>Normally not needed — use Add / Edit above.</small></p>
+    </div>
+  </details>
+
+<script src="auth_guard.js"></script>
+<script>
+  const $ = (id) => document.getElementById(id);
+  // Phase 10D: identity from the login session (auth_guard.js).
+  $("base").value = AUTH.base;
+  $("user").value = AUTH.user;           // lets loadPerms() fire for the session user
+
+  const baseUrl = () => AUTH.base;
+  const headers = () => AUTH.headers();
+  const jheaders = () => AUTH.jheaders();
+  function setStatus(msg, cls) { const s = $("mstatus"); s.textContent = msg; s.className = cls; }
+  function remember() { /* Phase 10D: session holds identity — nothing to persist. */ }
+
+  // ── Phase 10C: role permissions drive what is VISIBLE (backend enforces too) ──
+  let PERMS = ["*"], ALLOWED_COLS = null, MY_ROLE = null;
+  const can = (p) => PERMS.includes("*") || PERMS.includes(p);
+  const canEditFull = () => can("inventory.edit");
+  const canEditSome = () => canEditFull() || (ALLOWED_COLS && ALLOWED_COLS.length > 0);
+  async function loadPerms() {
+    PERMS = ["*"]; ALLOWED_COLS = null; MY_ROLE = null;
+    if (!$("user").value.trim()) return;
+    const r = await fetch(baseUrl() + "/admin/users/my_permissions", { headers: headers() });
+    const d = await r.json();
+    if (!r.ok) { setStatus("✗ " + (d.detail || "Access Denied."), "err"); PERMS = []; return; }
+    PERMS = d.permissions || []; ALLOWED_COLS = d.allowed_cols; MY_ROLE = d.role;
+  }
+  function applyPerms() {
+    $("addBtn").style.display = canEditFull() ? "" : "none";
+    $("refreshBtn").style.display = can("inventory.refresh") ? "" : "none";
+    $("dupBtn").style.display = can("inventory.view") ? "" : "none";
+    const adv = document.querySelector("details");
+    if (adv) adv.style.display = can("excel.upload") ? "" : "none";
+    if (MY_ROLE) setStatus("Working as " + $("user").value.trim() + " (" + MY_ROLE + ").", "info");
+  }
+  function esc(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+  let ALL = [], FILTER = "ALL", SCHEMA = null;
+  let SORT_KEY = "", SORT_DIR = -1;   // -1 desc, 1 asc
+  let MODE = null, EDIT_CAR = null, VIEW_ONLY = false;
+
+  // Brand synonyms so "Maruti" matches stored "MARU", "Honda" matches "HOND", etc.
+  const BRAND_ALIASES = {
+    "MARU":["maruti","maruti suzuki","suzuki"], "MAHI":["mahindra"], "HOND":["honda"],
+    "TOYO":["toyota"], "HYUN":["hyundai"], "MERC":["mercedes","mercedes benz","benz"],
+    "MERCEDES":["mercedes","benz"], "SHEV":["chevrolet","chevy"], "VOX":["volkswagen","vw"],
+    "TATA":["tata"], "FORD":["ford"], "SKODA":["skoda"], "KIA":["kia"], "MG":["mg"],
+    "AUDI":["audi"], "JEEP":["jeep"], "NISSAN":["nissan"], "RENAULT":["renault"],
+    "FIAT":["fiat"], "VOLVO":["volvo"], "BMW":["bmw"], "DATSUN":["datsun"], "MITSUBISHI":["mitsubishi"]
+  };
+  function haystack(v){
+    const bkey = String(v.brand||"").trim().toUpperCase();
+    const al = BRAND_ALIASES[bkey] || [];
+    return (v.registration_no+" "+v.brand+" "+v.model+" "+al.join(" ")).toLowerCase();
+  }
+  function fmtPrice(p){ const n=Number(p); if(!p||isNaN(n)) return p||"—"; return "₹"+(n/100000).toFixed(2)+" L"; }
+  function fmtDate(d){ return d ? String(d).slice(0,10) : "—"; }
+
+  async function loadDashboard(){
+    remember(); setStatus("Loading inventory…","info");
+    try{
+      await loadPerms();
+      if(!can("inventory.view")){ setStatus("Access Denied — your role cannot view the inventory dashboard.","err"); $("rows").innerHTML='<tr><td colspan="9" class="muted">Access Denied.</td></tr>'; return; }
+      const r = await fetch(baseUrl()+"/admin/inventory/dashboard",{headers:headers()});
+      if(!r.ok){ setStatus("Could not load ("+r.status+"). Check address, admin key and username.","err"); return; }
+      const d = await r.json(); const s = d.summary||{};
+      $("s_live").textContent=s.live??"—"; $("s_avail").textContent=s.available??"—";
+      $("s_reserved").textContent=s.reserved??"—"; $("s_sold").textContent=s.sold??"—";
+      $("s_updated").textContent=fmtDate(s.last_updated); $("s_file").textContent=s.current_file||"—";
+      ALL = d.vehicles||[]; renderTable(); applyPerms();
+      if(!MY_ROLE) setStatus("Loaded "+ALL.length+" vehicles.","ok");
+    }catch(e){ setStatus("Network error: "+e.message,"err"); }
+  }
+
+  function sortRows(rows){
+    if(!SORT_KEY) return rows;
+    const num = SORT_KEY!=="last_updated";
+    return rows.slice().sort((a,b)=>{
+      let x=a[SORT_KEY], y=b[SORT_KEY];
+      if(num){ x=Number(x)||0; y=Number(y)||0; return (x-y)*SORT_DIR; }
+      x=String(x||""); y=String(y||""); return x<y?-SORT_DIR:x>y?SORT_DIR:0;
+    });
+  }
+
+  function renderTable(){
+    const q = $("search").value.trim().toLowerCase();
+    let rows = ALL.filter(v => (FILTER==="ALL"||v.status===FILTER) && (!q || haystack(v).includes(q)));
+    rows = sortRows(rows);
+    const tbody = $("rows"); tbody.innerHTML="";
+    for(const v of rows){
+      const sold = v.status==="SOLD"; const reg = esc(v.registration_no);
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td><b>${reg}</b></td><td>${esc(v.brand)}</td><td>${esc(v.model)}</td>`+
+        `<td>${esc(v.year)}</td><td>${esc(v.km)}</td><td>${fmtPrice(v.price)}</td>`+
+        `<td><span class="pill ${v.status}">${v.status}</span></td><td>${fmtDate(v.last_updated)}</td>`+
+        `<td>`+
+          `<button class="rowbtn ghost" onclick="viewDetails('${reg}')">View</button>`+
+          (canEditSome() ? `<button class="rowbtn" onclick="location.href='vehicle_details.html?reg=${reg}'">Details</button>` : "")+
+          (sold
+            ? (canEditFull() ? `<button class="rowbtn teal" onclick="restoreCar('${reg}')">Restore</button>` : "")
+            : (canEditSome() ? `<button class="rowbtn green" onclick="editCar('${reg}')">Edit</button>` : "")+
+              (can("media.view") ? `<button class="rowbtn secondary" onclick="openMedia('${reg}')">Media</button>` : "")+
+              (can("media.sold") ? `<button class="rowbtn danger" onclick="markSold('${reg}')">Mark Sold</button>` : ""))+
+        `</td>`;
+      tbody.appendChild(tr);
+    }
+    if(!rows.length) tbody.innerHTML='<tr><td colspan="9" class="muted">No matching vehicles.</td></tr>';
+    $("shown").textContent = rows.length;
+  }
+
+  // ── dynamic form (grouped) ──
+  async function loadSchema(){ if(SCHEMA) return SCHEMA; const r=await fetch(baseUrl()+"/admin/inventory/schema",{headers:headers()}); SCHEMA=await r.json(); return SCHEMA; }
+
+  function buildForm(values, {readOnly=false, lockCarNumb=false, prefillCar=null}={}){
+    const wrap=$("formGroups"); wrap.innerHTML="";
+    for(const g of SCHEMA.groups){
+      const fs=document.createElement("fieldset");
+      const lg=document.createElement("legend"); lg.textContent=g.name; fs.appendChild(lg);
+      const grid=document.createElement("div"); grid.className="grid2";
+      for(const f of g.fields){
+        const box=document.createElement("div");
+        const lbl=document.createElement("label"); lbl.textContent=f.label+(f.key===SCHEMA.car_numb_key?" (read-only)":"");
+        const inp=document.createElement("input"); inp.type="text"; inp.id="fld_"+f.key;
+        let val = (values && values[f.key]!=null) ? values[f.key] : "";
+        if(f.key===SCHEMA.car_numb_key && prefillCar) val=prefillCar;
+        inp.value=val;
+        const scoped = !readOnly && !canEditFull() && ALLOWED_COLS;   // finance/document staff
+        const ro = readOnly || !f.editable || (f.key===SCHEMA.car_numb_key && lockCarNumb)
+                || (scoped && ALLOWED_COLS.indexOf(f.key) === -1);
+        if(ro){ inp.readOnly=true; inp.style.background="#f0f4f8"; }
+        box.appendChild(lbl); box.appendChild(inp); grid.appendChild(box);
+      }
+      fs.appendChild(grid); wrap.appendChild(fs);
+    }
+    $("saveCarBtn").style.display = readOnly ? "none" : "inline-block";
+    $("formCard").style.display="block";
+    $("formCard").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+
+  function collectValues(editableOnly){
+    const flat = SCHEMA.groups.flatMap(g=>g.fields);
+    const scoped = !canEditFull() && ALLOWED_COLS;    // finance/document staff
+    const out={};
+    for(const f of flat){
+      if(editableOnly && !f.editable && f.key!==SCHEMA.car_numb_key) continue;
+      if(scoped && MODE==="edit" && ALLOWED_COLS.indexOf(f.key)===-1) continue;
+      const el=$("fld_"+f.key); if(el) out[f.key]=el.value.trim();
+    }
+    return out;
+  }
+  function hideForm(){ $("formCard").style.display="none"; }
+
+  window.editCar = async function(reg){
+    try{
+      await loadSchema();
+      const r=await fetch(baseUrl()+"/admin/inventory/get_car",{method:"POST",headers:jheaders(),body:JSON.stringify({car_number:reg})});
+      const d=await r.json(); if(!r.ok){ setStatus("✗ "+(d.detail||"Could not load."),"err"); return; }
+      MODE="edit"; EDIT_CAR=d.car_number; VIEW_ONLY=false;
+      $("formTitle").textContent="Editing "+d.car_number;
+      buildForm(d.values,{readOnly:false});
+      setStatus("Edit any field (CAR NUMB is locked), then Save.","info");
+    }catch(e){ setStatus("Network error: "+e.message,"err"); }
+  };
+
+  window.viewDetails = async function(reg){
+    try{
+      await loadSchema();
+      const r=await fetch(baseUrl()+"/admin/inventory/get_car",{method:"POST",headers:jheaders(),body:JSON.stringify({car_number:reg})});
+      const d=await r.json(); if(!r.ok){ setStatus("✗ "+(d.detail||"Could not load."),"err"); return; }
+      VIEW_ONLY=true; $("formTitle").textContent="Details — "+d.car_number+" (read-only)";
+      buildForm(d.values,{readOnly:true});
+      setStatus("Viewing all fields (read-only).","info");
+    }catch(e){ setStatus("Network error: "+e.message,"err"); }
+  };
+
+  async function addNew(){
+    await loadSchema();
+    const reg = (prompt("Enter CAR NUMB (registration) for the new vehicle:")||"").trim();
+    if(!reg) return;
+    // immediate duplicate check
+    const r=await fetch(baseUrl()+"/admin/inventory/get_car",{method:"POST",headers:jheaders(),body:JSON.stringify({car_number:reg})});
+    if(r.ok){
+      if(confirm("This vehicle already exists.\nWould you like to Edit it instead?")) window.editCar(reg.toUpperCase().replace(/\s/g,""));
+      return;
+    }
+    MODE="add"; EDIT_CAR=null; VIEW_ONLY=false;
+    $("formTitle").textContent="New car — "+reg.toUpperCase().replace(/\s/g,"");
+    buildForm({},{readOnly:false, lockCarNumb:true, prefillCar:reg.toUpperCase().replace(/\s/g,"")});
+    setStatus("Fill in the details, then Save.","info");
+  }
+
+  async function saveCar(){
+    if(VIEW_ONLY){ hideForm(); return; }
+    const values = collectValues(true);
+    let url,payload;
+    if(MODE==="edit"){ url="/admin/inventory/update_car"; payload={car_number:EDIT_CAR, values}; }
+    else{ url="/admin/inventory/add_car"; payload={values}; }
+    $("saveCarBtn").disabled=true; setStatus("Saving…","info");
+    try{
+      const r=await fetch(baseUrl()+url,{method:"POST",headers:jheaders(),body:JSON.stringify(payload)});
+      const d=await r.json();
+      if(r.ok && d.status==="ok"){ hideForm(); setStatus("✓ "+(d.message||"Saved.")+" Chatbot updated.","ok"); loadDashboard(); }
+      else if(r.status===409 && d.exists){ if(confirm("This vehicle already exists.\nWould you like to Edit it instead?")) window.editCar(d.car_number); }
+      else setStatus("✗ "+(d.detail||"Save failed."),"err");
+    }catch(e){ setStatus("Network error: "+e.message,"err"); }
+    $("saveCarBtn").disabled=false;
+  }
+
+  window.openMedia = function(reg){
+    // Phase 10D: the media page reads the same login session — just open it.
+    window.open("media_admin.html?car="+encodeURIComponent(reg),"_blank");
+  };
+
+  window.markSold = async function(reg){
+    const v = ALL.find(x=>x.registration_no===reg)||{};
+    if(!confirm("Mark "+reg+" ("+(v.model||"")+") as SOLD?\n\nThis deletes its photos/videos and removes it from the chatbot. This cannot be undone.")) return;
+    setStatus("Marking sold…","info");
+    try{
+      const r=await fetch(baseUrl()+"/admin/media/mark_sold",{method:"POST",headers:jheaders(),body:JSON.stringify({car_number:reg,confirm:true})});
+      const d=await r.json();
+      if(r.ok && d.status==="ok"){ setStatus("✓ Sold. "+(d.files_deleted??0)+" media files deleted. Removed from chatbot.","ok"); loadDashboard(); }
+      else setStatus("✗ "+(d.detail||JSON.stringify(d)),"err");
+    }catch(e){ setStatus("Network error: "+e.message,"err"); }
+  };
+
+  window.restoreCar = async function(reg){
+    const v = ALL.find(x=>x.registration_no===reg)||{};
+    if(!confirm("Restore "+reg+" ("+(v.model||"")+") back to AVAILABLE?\n\n"+
+                "It will reappear in the chatbot. Its old photos/videos were deleted when it was sold — re-upload them via the Media button when ready.")) return;
+    setStatus("Restoring…","info");
+    try{
+      const r=await fetch(baseUrl()+"/admin/inventory/restore_car",{method:"POST",headers:jheaders(),body:JSON.stringify({car_number:reg})});
+      const d=await r.json();
+      if(r.ok && d.status==="ok"){ setStatus("✓ "+(d.message||"Restored."),"ok"); loadDashboard(); }
+      else setStatus("✗ "+(d.detail||"Restore failed."),"err");
+    }catch(e){ setStatus("Network error: "+e.message,"err"); }
+  };
+
+  async function refreshInventory(){
+    setStatus("Refreshing inventory…","info");
+    try{ const r=await fetch(baseUrl()+"/admin/refresh_inventory",{method:"POST",headers:headers()});
+      if(!r.ok){ setStatus("Refresh failed ("+r.status+").","err"); return; } loadDashboard();
+    }catch(e){ setStatus("Network error: "+e.message,"err"); }
+  }
+
+  async function duplicateAudit(){
+    setStatus("Scanning workbook for duplicate CAR NUMB…","info");
+    try{
+      const r=await fetch(baseUrl()+"/admin/inventory/duplicate_audit",{method:"POST",headers:jheaders(),body:"{}"});
+      const d=await r.json();
+      if(r.ok && d.status==="ok"){
+        const regs=Object.keys(d.duplicates||{});
+        setStatus("✓ Duplicate audit done — "+d.duplicate_registrations+" duplicate registration(s), "+d.duplicate_rows+" rows. Report saved as "+d.report+" (next to the Excel)."+(regs.length?" Duplicates: "+regs.join(", "):""),"ok");
+      } else setStatus("✗ "+(d.detail||"Audit failed."),"err");
+    }catch(e){ setStatus("Network error: "+e.message,"err"); }
+  }
+
+  async function upload(){
+    const f=$("file_input").files[0]; if(!f) return;
+    const fd=new FormData(); fd.append("file",f,f.name);
+    $("uploadBtn").disabled=true; setStatus("Validating and updating…","info");
+    try{ const r=await fetch(baseUrl()+"/admin/upload_inventory",{method:"POST",headers:headers(),body:fd}); const d=await r.json();
+      if(r.ok && d.status==="ok"){ setStatus("✓ Inventory updated — "+d.vehicles_loaded+" cars live.","ok"); loadDashboard(); }
+      else setStatus("✗ "+(d.detail||(d.errors?d.errors.join(" • "):"Update failed.")),"err");
+    }catch(e){ setStatus("Network error: "+e.message,"err"); }
+    $("uploadBtn").disabled=false;
+  }
+
+  // wire up
+  $("connectBtn").onclick=loadDashboard;
+  $("refreshBtn").onclick=refreshInventory;
+  $("addBtn").onclick=addNew;
+  $("dupBtn").onclick=duplicateAudit;
+  $("saveCarBtn").onclick=saveCar;
+  $("cancelCarBtn").onclick=()=>{ hideForm(); setStatus("",""); };
+  $("search").addEventListener("input", renderTable);
+  $("sortKey").addEventListener("change", ()=>{ SORT_KEY=$("sortKey").value; renderTable(); });
+  $("sortDir").onclick=()=>{ SORT_DIR=-SORT_DIR; $("sortDir").textContent=SORT_DIR<0?"▼ Desc":"▲ Asc"; renderTable(); };
+  document.querySelectorAll(".filter").forEach(b=>b.onclick=()=>{
+    FILTER=b.dataset.f; document.querySelectorAll(".filter").forEach(x=>x.classList.remove("active")); b.classList.add("active"); renderTable();
+  });
+  $("file_input").addEventListener("change",()=>{ $("uploadBtn").disabled=!$("file_input").files[0]; });
+  $("uploadBtn").onclick=upload;
+
+  loadDashboard();                       // Phase 10D: signed in → load immediately
+</script>
+</body>
+</html>

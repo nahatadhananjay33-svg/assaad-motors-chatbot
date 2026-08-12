@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vehicle Details — Vasant Oasis</title>
+<style>
+  :root{--ink:#0f2540;--mut:#607089;--line:#d7e0ec;--bg:#f4f7fb;--card:#fff;
+        --ok:#0a7d33;--okbg:#e7f6ec;--miss:#fff8e1;--missbd:#f0d98a;--accent:#3b5bdb;
+        --err:#c0392b;--errbg:#fdecea;--req:#c0392b;--rec:#b8860b;}
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%}
+  header.top{background:#0f2540;color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:30;gap:10px;flex-wrap:wrap}
+  header.top .brand{font-weight:700}
+  header.top a,header.top button{color:#fff;text-decoration:none;margin-left:14px;font-size:14px;background:none;border:none;cursor:pointer}
+  header.top .logout{background:#c0392b;padding:8px 14px;border-radius:8px}
+  .wrap{max-width:1000px;margin:0 auto;padding:16px}
+  .bar{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px;position:sticky;top:60px;z-index:20;box-shadow:0 2px 10px rgba(15,37,64,.05)}
+  .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .title{font-size:20px;font-weight:700}
+  .sub{color:var(--mut);font-size:13px}
+  input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:9px;font-size:16px;background:#fff;color:var(--ink);min-height:44px}
+  textarea{min-height:70px;resize:vertical}
+  .search{flex:1;min-width:220px}
+  .btn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:12px 20px;font-size:15px;font-weight:600;cursor:pointer;min-height:44px}
+  .btn.ghost{background:#eef2f9;color:var(--ink)}
+  .btn:disabled{opacity:.5;cursor:default}
+  .saveState{font-size:13px;font-weight:600;padding:7px 12px;border-radius:20px;white-space:nowrap}
+  .st-idle{color:var(--mut);background:#eef2f9}.st-dirty{color:#8a5a00;background:#fff3d6}
+  .st-saving{color:#004a99;background:#dceaff}.st-saved{color:var(--ok);background:var(--okbg)}
+  .st-err{color:#a3271f;background:#fdeaea}
+  .prog{height:10px;border-radius:6px;background:#e6ecf5;overflow:hidden;flex:1;min-width:120px}
+  .prog>i{display:block;height:100%;background:linear-gradient(90deg,#3b5bdb,#2ecc71);transition:width .3s}
+  .pct{font-weight:700;font-size:13px;min-width:44px;text-align:right}
+  .ready{font-size:13px;font-weight:700;padding:7px 12px;border-radius:20px}
+  .ready.yes{color:var(--ok);background:var(--okbg)}.ready.no{color:#8a5a00;background:#fff3d6}
+  .summary{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .summary h3{margin:0 0 10px;font-size:16px}
+  .chips{display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-size:13px;padding:6px 11px;border-radius:16px;border:1px solid var(--line);background:#f7f9fc}
+  .chip.yes{color:var(--ok);border-color:#bfe6cb;background:var(--okbg)}
+  .chip.no{color:#97a3b5;background:#f2f4f8}
+  .crit{margin-top:10px;font-size:13px;color:var(--req)}
+  .crit b{cursor:pointer;text-decoration:underline dotted}
+  .sec{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+  .sec>.head{display:flex;align-items:center;gap:10px;padding:14px 16px;cursor:pointer;user-select:none;min-height:52px}
+  .sec>.head:focus-visible{outline:3px solid #bcd0ff;outline-offset:-3px}
+  .sec>.head:hover{background:#f7f9fc}
+  .sec .icon{font-size:18px}.sec .name{font-weight:700;flex:1;font-size:15px}
+  .sec .caret{color:var(--mut);transition:transform .2s;font-size:14px}
+  .sec.collapsed .caret{transform:rotate(-90deg)}
+  .sec .body{padding:8px 16px 16px;display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;max-height:6000px;transition:max-height .25s ease,padding .25s ease;overflow:hidden}
+  .sec.collapsed .body{max-height:0;padding-top:0;padding-bottom:0}
+  @media(max-width:680px){.sec .body{grid-template-columns:1fr}}
+  .fld{min-width:0}
+  .fld label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--mut);margin-bottom:5px;font-weight:600}
+  .fld.full{grid-column:1 / -1}
+  .fld.hide{display:none}
+  .fld.miss input,.fld.miss select,.fld.miss textarea{background:var(--miss);border-color:var(--missbd)}
+  .fld.invalid input,.fld.invalid select,.fld.invalid textarea{border-color:var(--err);background:var(--errbg)}
+  .fld .emsg{color:var(--err);font-size:12px;margin-top:4px;display:none}
+  .fld.invalid .emsg{display:block}
+  .fld.hit{outline:3px solid #ffe08a;border-radius:10px;outline-offset:4px}
+  .badge{font-size:10px;font-weight:800;padding:2px 6px;border-radius:6px;letter-spacing:.03em}
+  .badge.req{color:#fff;background:var(--req)}.badge.rec{color:#fff;background:var(--rec)}
+  .chk{display:flex;align-items:center;gap:12px;padding:10px 0}
+  .chk input{width:24px;height:24px;min-height:24px}
+  .chk.miss{background:var(--miss);border:1px solid var(--missbd);border-radius:9px;padding:10px 12px}
+  .note{color:var(--mut);font-size:12px;margin-top:2px}
+  .skel{height:120px;border-radius:12px;background:linear-gradient(90deg,#eef2f8,#f7fafd,#eef2f8);background-size:200% 100%;animation:sh 1.2s infinite;margin-bottom:12px}
+  @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+  @media(max-width:680px){.bar{top:52px}.title{font-size:18px}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div><span class="brand">Assad Motors</span> <span id="who" class="sub"></span></div>
+  <div><a href="inventory_admin.html" id="navInv">Inventory</a><a href="media_admin.html" id="navMedia">Media</a>
+    <button class="logout" id="logoutBtn">Logout</button></div>
+</header>
+
+<div class="wrap">
+  <div class="bar">
+    <div class="row">
+      <div><div class="title" id="carTitle">Vehicle Details</div><div class="sub" id="carSub"></div></div>
+      <div style="flex:1"></div>
+      <span class="ready no" id="ready">—</span>
+      <span class="saveState st-idle" id="saveState">No changes</span>
+      <button class="btn" id="saveBtn" disabled>Save</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <input class="search" id="search" type="text" placeholder="🔍 Search — sunroof, mileage, airbags, insurance…">
+      <div class="prog"><i id="ovBar" style="width:0%"></i></div>
+      <span class="pct" id="ovPct">0%</span>
+    </div>
+    <div class="note" id="addRegWrap" style="display:none;margin-top:10px">
+      New car registration (required): <input type="text" id="addReg" style="max-width:260px;display:inline-block" placeholder="MH01AB1234">
+    </div>
+  </div>
+
+  <div class="summary" id="summaryCard">
+    <h3>Quick Summary</h3>
+    <div class="chips" id="summaryChips"><span class="sub">Loading…</span></div>
+    <div class="crit" id="critWrap"></div>
+  </div>
+
+  <div id="sections"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+  <div style="height:60px"></div>
+</div>
+
+<script src="auth_guard.js"></script>
+<script>
+// ── control: text|number|bool|enum|textarea|date ; def = [section,control,options?] ──
+const FUEL=[["P","Petrol"],["D","Diesel"],["C","CNG"],["PC","Petrol+CNG"],["E","Electric"],["H","Hybrid"]];
+const TRANS=[["A","Automatic"],["M","Manual"]];
+const OWN=[["1","1 (First)"],["2","2 (Second)"],["3","3 (Third)"],["4","4"],["5","5"],["6","6+"]];
+const COND=["Excellent","Good","Fair","Poor"], WEAR=["Good","Fair","Replace"];
+const DEF={
+ // Vehicle Basics
+ "Model":["Vehicle Basics","text"], "Company / Make":["Vehicle Basics","text"],
+ "Year":["Vehicle Basics","number"], "Variant":["Vehicle Basics","text"],
+ "Fuel Type":["Vehicle Basics","enum",FUEL], "Transmission":["Vehicle Basics","enum",TRANS],
+ "Colour":["Vehicle Basics","text"],
+ // Pricing
+ "Rate (Rs)":["Pricing","text"], "Price Range Low":["Pricing","number"],
+ "Price Range High":["Pricing","number"], "Negotiable":["Pricing","bool"],
+ // Ownership
+ "Owners":["Ownership","enum",OWN], "KM Driven":["Ownership","number"],
+ "Usage Type":["Ownership","enum",["Private","Taxi","Corporate"]],
+ // Registration
+ "RTO":["Registration","text"], "Location":["Registration","text"],
+ // Insurance
+ "Insurance (date)":["Insurance","text"],
+ "Insurance Type":["Insurance","enum",["Comprehensive","Third-Party","Expired"]],
+ "Insurance Expiry":["Insurance","date"], "Zero Dep":["Insurance","bool"],
+ "Insurance Claim History":["Insurance","bool"],
+ // Engine
+ "Engine CC":["Engine","number"], "Power BHP":["Engine","number"], "Torque NM":["Engine","number"],
+ "Aspiration":["Engine","enum",["NA","Turbo","Supercharged"]],
+ "Mileage ARAI":["Engine","number"], "Fuel Tank":["Engine","number"], "Claimed Mileage":["Engine","number"],
+ // Transmission
+ "Transmission Subtype":["Transmission","enum",["AMT","CVT","DCT","iMT","TC","DSG"]],
+ "Gears":["Transmission","number"], "Drivetrain":["Transmission","enum",["FWD","RWD","AWD","4WD"]],
+ // Exterior
+ "Headlamp Type":["Exterior","enum",["LED","Projector","Halogen"]], "DRL":["Exterior","bool"],
+ "Fog Lamps":["Exterior","bool"], "Wheel Type":["Exterior","enum",["Alloy","Steel"]],
+ "Wheel Size Inch":["Exterior","number"], "Sunroof Type":["Exterior","enum",["None","Single","Panoramic"]],
+ "Roof Rails":["Exterior","bool"], "Spoiler":["Exterior","bool"],
+ "Length MM":["Exterior","number"], "Width MM":["Exterior","number"], "Height MM":["Exterior","number"],
+ "Wheelbase MM":["Exterior","number"], "Boot Litres":["Exterior","number"], "Ground Clearance MM":["Exterior","number"],
+ // Interior
+ "Upholstery":["Interior","enum",["Fabric","Leather","Leatherette"]],
+ "Power Windows":["Interior","enum",["All 4","Front"]],
+ "Adjustable Seat":["Interior","enum",["Height","Manual","Power"]],
+ // Comfort
+ "AC Type":["Comfort","enum",["Manual","Auto-climate"]], "Rear AC Vents":["Comfort","bool"],
+ "Cruise Control":["Comfort","bool"], "Keyless Entry":["Comfort","bool"], "Push Button Start":["Comfort","bool"],
+ "Auto Folding ORVM":["Comfort","bool"], "Rear Defogger":["Comfort","bool"], "Rear Wiper":["Comfort","bool"],
+ "Wireless Charging":["Comfort","bool"], "Ventilated Seats":["Comfort","bool"], "Connected Car":["Comfort","bool"],
+ // Infotainment
+ "Touchscreen Inches":["Infotainment","number"], "Android Auto CarPlay":["Infotainment","bool"],
+ "Speakers":["Infotainment","number"], "Camera Type":["Infotainment","enum",["None","Reverse","360"]],
+ "Steering Controls":["Infotainment","bool"],
+ // Safety
+ "Airbags":["Safety","number"], "ABS EBD":["Safety","bool"], "ESP":["Safety","bool"], "Hill Hold":["Safety","bool"],
+ "Parking Sensors":["Safety","enum",["None","Rear","Front+Rear"]], "ISOFIX":["Safety","bool"], "NCAP Rating":["Safety","number"],
+ // Accessories
+ "Spare Tyre":["Accessories","bool"], "Toolkit":["Accessories","bool"], "Floor Mats":["Accessories","bool"],
+ "Accessories Added":["Accessories","textarea"],
+ // Mechanical Condition
+ "Accident Free":["Mechanical Condition","bool"], "Flood Damage":["Mechanical Condition","bool"],
+ "Repainted":["Mechanical Condition","bool"], "Repaint Panels":["Mechanical Condition","text"],
+ "Body Condition":["Mechanical Condition","enum",COND], "Engine Condition":["Mechanical Condition","enum",COND],
+ "Interior Condition":["Mechanical Condition","enum",COND], "Tyre Condition":["Mechanical Condition","enum",WEAR],
+ "Brake Condition":["Mechanical Condition","enum",WEAR], "Clutch Condition":["Mechanical Condition","enum",["Good","Fair","Replace","NA"]],
+ "Battery Condition":["Mechanical Condition","enum",WEAR], "Tyre Life Pct":["Mechanical Condition","number"],
+ "Battery Replaced On":["Mechanical Condition","date"],
+ // Documents
+ "RC Status":["Documents","enum",["Clear","Hypothecated","Pending"]], "Hypothecation Bank":["Documents","text"],
+ "Loan Closed":["Documents","bool"], "NOC Available":["Documents","bool"], "Duplicate RC":["Documents","bool"],
+ "PUC Valid Till":["Documents","date"], "Road Tax Status":["Documents","enum",["Paid","Lifetime","Pending"]],
+ "Fitness Valid Till":["Documents","date"], "Service History Available":["Documents","bool"],
+ "Last Service Date":["Documents","date"], "Service Center Type":["Documents","enum",["Authorised","Multi-brand","Local"]],
+ // Keys
+ "Keys Count":["Keys","number"], "Spare Key":["Keys","bool"],
+ // Warranty
+ "Warranty Available":["Warranty","bool"], "Warranty Expiry":["Warranty","date"], "Warranty Provider":["Warranty","text"],
+ // Finance
+ "Finance Eligible":["Finance","bool"],
+ // EV (conditional)
+ "Battery Health Pct":["EV","number"], "Real Range KM":["EV","number"], "Battery Warranty Till":["EV","date"],
+ "Charger Type":["EV","text"], "Charging Time":["EV","text"], "Battery Owned":["EV","bool"],
+ // Remarks
+ "Reason for Sale":["Remarks","textarea"], "Best Features":["Remarks","textarea"], "Known Issues":["Remarks","textarea"],
+};
+const SECTION_ORDER=["Vehicle Basics","Pricing","Ownership","Registration","Insurance","Engine",
+ "Transmission","Exterior","Interior","Comfort","Infotainment","Safety","Accessories",
+ "Mechanical Condition","Documents","Keys","Warranty","Finance","EV","Remarks","Other Information"];
+const ICON={"Vehicle Basics":"🚗","Pricing":"💰","Ownership":"👤","Registration":"📋","Insurance":"🛡️",
+ "Engine":"⚙️","Transmission":"🔧","Exterior":"✨","Interior":"🪑","Comfort":"❄️","Infotainment":"📱",
+ "Safety":"🛟","Accessories":"🧰","Mechanical Condition":"🔩","Documents":"📄","Keys":"🔑","Warranty":"✅",
+ "Finance":"🏦","EV":"🔋","Remarks":"📝","Other Information":"➕"};
+const SKIP=new Set(["Stock No","Sr No","Reg Last 4","STATUS","LAST_UPDATED","Photo Count","Video Count"]);
+const REQUIRED=new Set(["Model","Year","Fuel Type","Transmission","Owners","KM Driven","Rate (Rs)","Colour","RC Status"]);
+const RECOMMENDED=new Set(["Company / Make","RTO","Insurance Type","Accident Free","Body Condition","Airbags","Best Features","Service History Available","Variant",
+ // Phase 12J: nudge the buyer-facing feature/document fields the chatbot answers
+ // (most are blank today). Badged as RECOMMENDED — NOT made mandatory.
+ "Sunroof Type","Camera Type","Parking Sensors","Touchscreen Inches","Speakers","Android Auto CarPlay","ABS EBD","Cruise Control","Keyless Entry","Boot Litres","Ground Clearance MM","Mileage ARAI","Engine CC","RC Status","Warranty Available"]);
+const SUMMARY=["Sunroof Type","Android Auto CarPlay","Camera Type","Cruise Control","ABS EBD","Airbags","Wheel Type","Keyless Entry","Push Button Start","Rear AC Vents",
+ // Phase 12J: extend the buyer-facing ✓/✗ highlight row
+ "Parking Sensors","Touchscreen Inches","Speakers","Boot Litres","Mileage ARAI"];
+const SYN={"mileage":"mileage arai claimed km","kms":"km driven","gearbox":"transmission","gears":"transmission",
+ "ac":"ac type rear vents","camera":"camera reverse 360","seats":"seater ISOFIX upholstery","colour":"colour",
+ "airbag":"airbags","music":"speakers infotainment","screen":"touchscreen","loan":"finance hypothecation loan closed",
+ "papers":"rc documents noc puc fitness","battery":"battery ev","ev":"battery charging range electric",
+ "sunroof":"sunroof","tyre":"tyre","rc":"rc status","emi":"finance"};
+// validators: id -> function(value)->errorString|null (only when value non-empty)
+const num=(v)=>parseFloat(String(v).replace(/,/g,""));
+const VAL={
+ "Year":v=>{const n=num(v);return(n>=1990&&n<=2027)?null:"Year must be 1990–2027";},
+ "KM Driven":v=>{const n=num(v);return(n>=0&&n<=1000000)?null:"KM must be 0–1,000,000";},
+ "Engine CC":v=>{const n=num(v);return(n>=300&&n<=8000)?null:"Engine CC must be 300–8000";},
+ "Mileage ARAI":v=>{const n=num(v);return(n>=2&&n<=50)?null:"Mileage must be 2–50 kmpl";},
+ "Claimed Mileage":v=>{const n=num(v);return(n>=2&&n<=50)?null:"Mileage must be 2–50 kmpl";},
+ "Fuel Tank":v=>{const n=num(v);return(n>=5&&n<=120)?null:"Fuel tank must be 5–120 L";},
+ "Airbags":v=>{const n=num(v);return(n>=0&&n<=12)?null:"Airbags must be 0–12";},
+ "NCAP Rating":v=>{const n=num(v);return(n>=0&&n<=5)?null:"NCAP must be 0–5 stars";},
+ "Touchscreen Inches":v=>{const n=num(v);return(n>=4&&n<=20)?null:"Screen must be 4–20 inches";},
+ "Speakers":v=>{const n=num(v);return(n>=0&&n<=20)?null:"Speakers must be 0–20";},
+ "Gears":v=>{const n=num(v);return(n>=4&&n<=10)?null:"Gears must be 4–10";},
+ "Wheel Size Inch":v=>{const n=num(v);return(n>=10&&n<=24)?null:"Wheel size must be 10–24 inch";},
+ "Battery Health Pct":v=>{const n=num(v);return(n>=0&&n<=100)?null:"Battery % must be 0–100";},
+ "Tyre Life Pct":v=>{const n=num(v);return(n>=0&&n<=100)?null:"Tyre % must be 0–100";},
+ "Real Range KM":v=>{const n=num(v);return(n>=20&&n<=1000)?null:"Range must be 20–1000 km";},
+ "Charging Time":v=>/\d/.test(v)?null:"Add a number, e.g. '6h' or '45 min'",
+ "Price Range Low":v=>{const n=num(v);return(n>=0)?null:"Must be 0 or more";},
+ "Price Range High":v=>{const n=num(v);return(n>=0)?null:"Must be 0 or more";},
+};
+const DATE_IDS=new Set(Object.keys(DEF).filter(k=>DEF[k][1]==="date"));
+function dateErr(v){return /^\d{4}(-\d{1,2}){0,2}$|^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(String(v).trim())?null:"Use DD/MM/YYYY";}
+// This page shows/accepts dates as DD/MM/YYYY, but stores them canonically as
+// YYYY-MM-DD so the chatbot and stored data format are UNCHANGED (page-only).
+function isoToDMY(v){const m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(v??"").trim());
+  return m?String(m[3]).padStart(2,"0")+"/"+String(m[2]).padStart(2,"0")+"/"+m[1]:(v==null?"":v);}
+function dmyToIso(v){const s=String(v??"").trim();const m=/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s);
+  if(!m)return s;let y=m[3];if(y.length===2)y="20"+y;
+  return y+"-"+String(m[2]).padStart(2,"0")+"-"+String(m[1]).padStart(2,"0");}
+
+let SCHEMA=[], VALUES={}, DIRTY={}, MODE="edit", REG="", FIELDMAP={};
+const $=id=>document.getElementById(id);
+const api=(p,b)=>fetch(AUTH.base+p,{method:'POST',headers:Object.assign({'Content-Type':'application/json'},AUTH.headers()),body:JSON.stringify(b)});
+const isFilled=v=>v!==null&&v!==undefined&&String(v).trim()!=="";
+const truthy=v=>{const s=String(v).trim().toLowerCase();return s==="yes"||s==="true"||s==="y"||s==="1";};
+const defOf=f=>DEF[f.header]||DEF[f.label];
+const priOf=id=>REQUIRED.has(id)?"req":RECOMMENDED.has(id)?"rec":"opt";
+
+function setState(cls,txt){const e=$("saveState");e.className="saveState "+cls;e.textContent=txt;}
+function markDirty(key,val){DIRTY[key]=val;VALUES[key]=val;setState("st-dirty","Unsaved changes");$("saveBtn").disabled=false;applyDeps();recompute();}
+
+function render(){
+  const buckets={}; SECTION_ORDER.forEach(s=>buckets[s]=[]);
+  SCHEMA.forEach(f=>{
+    if(!f.editable) return;
+    const id=f.header||f.label; if(SKIP.has(id)||SKIP.has(f.label)) return;
+    if(f.col===14) return;                              // CAR NUMB handled separately
+    const h=(f.header||"").toUpperCase()+" "+(f.label||"").toUpperCase();
+    if(/PHOTO|VIDEO|INSTAGRAM|YOUTUBE|EXTERIOR|INTERIOR|MEDIA|URL|FOLDER/.test(h)) return;
+    const d=defOf(f);
+    const secName=d?d[0]:"Other Information";
+    const ctrl=d?d[1]:(f.type==="number"?"number":"text");
+    const opts=d?d[2]:null; const canon=(d&&(DEF[f.header]?f.header:f.label))||f.label;
+    buckets[secName].push({f,ctrl,opts,name:canon,label:f.label});
+  });
+  const host=$("sections"); host.innerHTML="";
+  SECTION_ORDER.forEach(sec=>{
+    const items=buckets[sec]; if(!items.length) return;
+    const el=document.createElement("div"); el.className="sec"; el.dataset.sec=sec;
+    el.innerHTML=`<div class="head" tabindex="0" role="button" aria-expanded="true">
+        <span class="icon">${ICON[sec]||"•"}</span><span class="name">${sec}</span>
+        <div class="prog" style="max-width:110px"><i data-bar style="width:0%"></i></div>
+        <span class="pct" data-pct>0%</span><span class="caret">▾</span></div>
+      <div class="body"></div>`;
+    const body=el.querySelector(".body");
+    items.forEach(it=>body.appendChild(control(it)));
+    const head=el.querySelector(".head");
+    const toggle=()=>{el.classList.toggle("collapsed");head.setAttribute("aria-expanded",!el.classList.contains("collapsed"));};
+    head.onclick=toggle;
+    head.onkeydown=e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();toggle();}};
+    host.appendChild(el);
+  });
+  applyDeps(); recompute(); renderSummary();
+}
+
+function control(it){
+  const {f,ctrl,opts,name,label}=it, key=f.key, val=VALUES[key]??"";
+  const wrap=document.createElement("div"); wrap.className="fld"; wrap.dataset.key=key; wrap.dataset.id=name;
+  wrap.dataset.search=(f.f_section+" "+name+" "+label).toLowerCase();
+  const pri=priOf(name); const badge=pri==="req"?'<span class="badge req">REQUIRED</span>':pri==="rec"?'<span class="badge rec">RECOMMENDED</span>':'';
+  if(ctrl==="bool"){
+    wrap.classList.add("full");
+    const on=truthy(val);
+    wrap.innerHTML=`<div class="chk"><input type="checkbox" ${on?"checked":""}><label style="margin:0">${label} ${badge}</label></div>`;
+    const cb=wrap.querySelector("input");
+    cb.onchange=()=>{markDirty(key,cb.checked?"Yes":"No");refreshMiss(wrap,cb.checked?"Yes":"No");};
+    if(!isFilled(val)) wrap.querySelector(".chk").classList.add("miss");
+    return wrap;
+  }
+  let inner="";
+  if(ctrl==="enum"){
+    let list=(opts||[]).map(o=>Array.isArray(o)?o:[o,o]);
+    const cur=String(val);
+    if(cur && !list.some(o=>o[0]===cur)) list=[[cur,cur]].concat(list); // preserve legacy value
+    inner=`<select><option value="">—</option>`+list.map(o=>`<option value="${o[0]}" ${cur===String(o[0])?"selected":""}>${o[1]}</option>`).join("")+`</select>`;
+  }else if(ctrl==="textarea"){wrap.classList.add("full");inner=`<textarea>${val||""}</textarea>`;}
+  else if(ctrl==="number"){
+    // Phase 12K (F7): a number input silently BLANKS a non-numeric stored value
+    // (e.g. legacy Year "2011/08"), so the field looks empty + REQUIRED while the
+    // data is actually filled (and ready-for-sale stays green). Fall back to a text
+    // input for such values so the real value stays visible and editable.
+    const numOk = (val===""||val==null) || !isNaN(Number(val));
+    inner = numOk
+      ? `<input type="number" inputmode="decimal" value="${val||""}">`
+      : `<input type="text" value="${String(val).replace(/"/g,"&quot;")}">`;
+  }
+  else if(ctrl==="date"){inner=`<input type="text" value="${isoToDMY(val)}" placeholder="DD/MM/YYYY">`;}
+  else{inner=`<input type="text" value="${val||""}">`;}
+  wrap.innerHTML=`<label>${label} ${badge}</label>${inner}<div class="emsg"></div>`;
+  const el=wrap.querySelector("select,input,textarea");
+  // Date fields display DD/MM/YYYY but are stored as canonical YYYY-MM-DD.
+  const conv=(ctrl==="date")?dmyToIso:(x=>x);
+  el.oninput=el.onchange=()=>{const sv=conv(el.value);markDirty(key,sv);refreshMiss(wrap,sv);clearInvalid(wrap);};
+  if(!isFilled(val)) wrap.classList.add("miss");
+  return wrap;
+}
+function refreshMiss(wrap,v){const box=wrap.querySelector(".chk")||wrap;isFilled(v)?box.classList.remove("miss"):box.classList.add("miss");}
+function clearInvalid(wrap){wrap.classList.remove("invalid");}
+
+// ── field dependencies ──
+function fuelVal(){const f=FIELDMAP["Fuel Type"];return f?String(VALUES[f]||"").toUpperCase():"";}
+function isEV(){const v=fuelVal();return v==="E"||v.includes("ELECT");}
+function hidden(){
+  const H=new Set();
+  const ev=isEV();
+  if(ev){ ["Engine CC","Fuel Tank","Mileage ARAI","Claimed Mileage","Aspiration"].forEach(x=>H.add(x)); }
+  else { ["Battery Health Pct","Real Range KM","Battery Warranty Till","Charger Type","Charging Time","Battery Owned"].forEach(x=>H.add(x)); }
+  if(!truthy(VALUES[FIELDMAP["Spare Key"]])) H.add("Keys Count");
+  if(!truthy(VALUES[FIELDMAP["Warranty Available"]])) { H.add("Warranty Expiry"); H.add("Warranty Provider"); }
+  const rc=String(VALUES[FIELDMAP["RC Status"]]||"");
+  if(rc!=="Hypothecated"){ H.add("Hypothecation Bank"); H.add("Loan Closed"); }
+  return H;
+}
+function applyDeps(){
+  const H=hidden(), ev=isEV();
+  document.querySelectorAll(".fld").forEach(w=>{w.classList.toggle("hide",H.has(w.dataset.id));});
+  // conditional whole sections: EV only for electric
+  const evSec=[...document.querySelectorAll(".sec")].find(s=>s.dataset.sec==="EV");
+  if(evSec) evSec.style.display= ev ? "" : "none";
+}
+
+function recompute(){
+  let tot=0,fil=0;
+  document.querySelectorAll(".sec").forEach(sec=>{
+    if(sec.style.display==="none"){const b=sec.querySelector("[data-bar]");if(b)b.style.width="0%";return;}
+    let st=0,sf=0;
+    sec.querySelectorAll(".fld").forEach(w=>{if(w.classList.contains("hide"))return;const v=VALUES[w.dataset.key];st++;if(isFilled(v))sf++;});
+    tot+=st;fil+=sf;const pct=st?Math.round(sf*100/st):0;
+    sec.querySelector("[data-bar]").style.width=pct+"%"; sec.querySelector("[data-pct]").textContent=pct+"%";
+  });
+  const ov=tot?Math.round(fil*100/tot):0; $("ovBar").style.width=ov+"%"; $("ovPct").textContent=ov+"%";
+  // required / ready-for-sale
+  const missing=[];
+  document.querySelectorAll(".fld").forEach(w=>{
+    if(w.classList.contains("hide"))return;
+    if(priOf(w.dataset.id)==="req" && !isFilled(VALUES[w.dataset.key])) missing.push(w.dataset.id);
+  });
+  const rd=$("ready");
+  if(missing.length===0 && MODE==="edit"){rd.className="ready yes";rd.textContent="✓ Ready for sale";}
+  else{rd.className="ready no";rd.textContent=(missing.length)+" required left";}
+  const cw=$("critWrap");
+  cw.innerHTML=missing.length? "Missing required: "+missing.map(m=>`<b onclick="jump('${m}')">${m}</b>`).join(", ") : "";
+}
+
+function renderSummary(){
+  const host=$("summaryChips");host.innerHTML="";
+  SUMMARY.forEach(id=>{
+    const key=FIELDMAP[id]; if(key===undefined) return;
+    const v=VALUES[key], d=DEF[id]; let yes,txt;
+    if(d&&d[1]==="bool"){yes=truthy(v);txt=id.replace(" CarPlay","").replace(" EBD","");}
+    else if(id==="Airbags"){yes=isFilled(v)&&Number(v)>0;txt=isFilled(v)?(v+" Airbags"):"Airbags";}
+    else if(id==="Sunroof Type"){yes=isFilled(v)&&v.toLowerCase()!=="none";txt="Sunroof";}
+    else if(id==="Camera Type"){yes=isFilled(v)&&v.toLowerCase()!=="none";txt=isFilled(v)?v+" Camera":"Camera";}
+    else if(id==="Wheel Type"){yes=String(v).toLowerCase()==="alloy";txt="Alloy Wheels";}
+    else if(id==="Parking Sensors"){yes=isFilled(v)&&String(v).toLowerCase()!=="none";txt="Parking Sensors";}
+    else if(id==="Touchscreen Inches"){yes=isFilled(v)&&Number(v)>0;txt=isFilled(v)?v+'" Screen':"Touchscreen";}
+    else if(id==="Speakers"){yes=isFilled(v)&&Number(v)>0;txt=isFilled(v)?v+" Speakers":"Speakers";}
+    else if(id==="Boot Litres"){yes=isFilled(v)&&Number(v)>0;txt=isFilled(v)?v+"L Boot":"Boot Space";}
+    else if(id==="Mileage ARAI"){yes=isFilled(v)&&Number(v)>0;txt=isFilled(v)?v+" kmpl":"Mileage";}
+    else{yes=isFilled(v);txt=id;}
+    const c=document.createElement("span");c.className="chip "+(yes?"yes":"no");c.textContent=(yes?"✓ ":"✗ ")+txt;host.appendChild(c);
+  });
+  if(!host.children.length)host.innerHTML='<span class="sub">Fill fields to see the summary.</span>';
+}
+
+function jump(id){
+  const w=[...document.querySelectorAll(".fld")].find(x=>x.dataset.id===id && !x.classList.contains("hide"));
+  if(!w)return; const sec=w.closest(".sec"); if(sec) sec.classList.remove("collapsed");
+  w.classList.add("hit"); w.scrollIntoView({behavior:"smooth",block:"center"});
+  const el=w.querySelector("input,select,textarea"); if(el)el.focus();
+  setTimeout(()=>w.classList.remove("hit"),2000);
+}
+window.jump=jump;
+
+// ── search (partial + synonyms + case-insensitive) ──
+$("search").oninput=function(){
+  const raw=this.value.trim().toLowerCase();
+  document.querySelectorAll(".fld.hit").forEach(e=>e.classList.remove("hit"));
+  if(!raw)return;
+  const terms=new Set(raw.split(/\s+/)); Object.keys(SYN).forEach(k=>{if(raw.includes(k))SYN[k].split(" ").forEach(t=>terms.add(t));});
+  let first=null;
+  document.querySelectorAll(".sec").forEach(sec=>{
+    if(sec.style.display==="none")return; let any=false;
+    sec.querySelectorAll(".fld").forEach(w=>{
+      if(w.classList.contains("hide"))return;
+      const hay=w.dataset.search; if([...terms].some(t=>t&&hay.includes(t))){any=true;if(!first)first=w;w.classList.add("hit");}
+    });
+    if(any||sec.dataset.sec.toLowerCase().includes(raw)) sec.classList.remove("collapsed");
+  });
+  if(first)first.scrollIntoView({behavior:"smooth",block:"center"});
+};
+
+// ── validation ──
+function validate(){
+  const errs=[];
+  document.querySelectorAll(".fld").forEach(w=>{
+    if(w.classList.contains("hide"))return;
+    // Only validate fields the owner actually CHANGED this session. Existing data
+    // (e.g. a legacy "Unknown" in a date/number field) must never block saving an
+    // unrelated edit. Nothing is compulsory to fill — the owner saves whatever
+    // data is available; the completeness badges/percent stay as guidance only.
+    if(!(w.dataset.key in DIRTY))return;
+    const id=w.dataset.id, v=VALUES[w.dataset.key]; w.classList.remove("invalid");
+    if(!isFilled(v))return;
+    let msg=null;
+    if(VAL[id])msg=VAL[id](v); else if(DATE_IDS.has(id))msg=dateErr(v);
+    if(msg){w.classList.add("invalid");const e=w.querySelector(".emsg");if(e)e.textContent=msg;errs.push(w);}
+  });
+  return errs;
+}
+
+async function save(){
+  const errs=validate();
+  if(errs.length){setState("st-err","Fix "+errs.length+" field(s)");const sec=errs[0].closest(".sec");if(sec)sec.classList.remove("collapsed");errs[0].scrollIntoView({behavior:"smooth",block:"center"});errs[0].classList.add("hit");return;}
+  const payload={};Object.keys(DIRTY).forEach(k=>payload[k]=DIRTY[k]);
+  if(!Object.keys(payload).length && MODE!=="add")return;
+  setState("st-saving","Saving…");$("saveBtn").disabled=true;
+  try{
+    let r;
+    if(MODE==="add"){
+      const reg=($("addReg").value||"").trim().toUpperCase().replace(/\s+/g,"");
+      if(!reg){setState("st-err","Enter registration first");$("addReg").focus();return;}
+      payload["c14"]=reg; r=await api("/admin/inventory/add_car",{values:payload});
+    }else r=await api("/admin/inventory/update_car",{car_number:REG,values:payload});
+    const d=await r.json();
+    if(r.ok&&d.status==="ok"){
+      DIRTY={}; setState("st-saved","✓ Saved successfully");
+      if(MODE==="add"){location.replace("vehicle_details.html?reg="+encodeURIComponent(d.car_number));return;}
+      await load();
+    }else{setState("st-err","✗ "+(d.detail||"Save failed"));$("saveBtn").disabled=false;}
+  }catch(e){setState("st-err","✗ "+e.message);$("saveBtn").disabled=false;}
+}
+
+async function load(){
+  const s=await fetch(AUTH.base+"/admin/inventory/schema",{headers:AUTH.headers()});
+  const sd=await s.json();
+  SCHEMA=(sd.groups?sd.groups.flatMap(g=>g.fields):sd.fields)||[];
+  SCHEMA.forEach(f=>{const d=defOf(f);f.f_section=d?d[0]:"Other Information";});
+  // name -> key map (by canonical id)
+  FIELDMAP={}; SCHEMA.forEach(f=>{const d=defOf(f);if(d){const id=DEF[f.header]?f.header:f.label;FIELDMAP[id]=f.key;}});
+  VALUES={};DIRTY={};
+  if(MODE==="edit"){
+    const r=await api("/admin/inventory/get_car",{car_number:REG});const d=await r.json();
+    if(r.ok&&d.status==="ok")VALUES=d.values||{}; else $("carSub").textContent="Car not found.";
+  }
+  render(); setState("st-idle",MODE==="add"?"New car":"No changes"); $("saveBtn").disabled=(MODE!=="add");
+}
+
+// ── unsaved protection ──
+window.addEventListener("beforeunload",e=>{if(Object.keys(DIRTY).length){e.preventDefault();e.returnValue="";}});
+// ── keyboard: Ctrl/Cmd+S saves ──
+window.addEventListener("keydown",e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==="s"){e.preventDefault();if(!$("saveBtn").disabled)save();}});
+
+(function(){
+  const p=new URLSearchParams(location.search);
+  $("who").textContent="Signed in as "+(AUTH.fullName||AUTH.user||"")+" · "+(AUTH.role||"");
+  // Phase 12K (F3): hide nav links this role can't use (server still enforces).
+  (function(){var r=AUTH.role||"";
+    var INV=["Owner","Inventory Staff","Photo Staff","Finance Staff","Document Staff","Read-Only Manager"];
+    var MED=["Owner","Photo Staff","Video Staff","Social Media Staff","Read-Only Manager"];
+    if(INV.indexOf(r)===-1){var i=$("navInv");if(i)i.style.display="none";}
+    if(MED.indexOf(r)===-1){var m=$("navMedia");if(m)m.style.display="none";}})();
+  $("logoutBtn").onclick=()=>{DIRTY={};AUTH.logout();};
+  $("saveBtn").onclick=save;
+  if(p.get("add")==="1"){MODE="add";$("carTitle").textContent="Add New Vehicle";$("addRegWrap").style.display="block";
+    $("addReg").oninput=()=>{$("saveBtn").disabled=false;setState("st-dirty","Unsaved changes");};}
+  else{REG=(p.get("reg")||"").toUpperCase();$("carSub").textContent=REG||"(no car selected)";}
+  load();
+})();
+</script>
+</body>
+</html>

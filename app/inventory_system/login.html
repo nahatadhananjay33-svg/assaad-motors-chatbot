@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<!-- Phase 10D — Login. Simple white UI. Authenticates against users.json via
+     POST /auth/login and stores a session token (localStorage) that every
+     dashboard reuses. No animations, no frameworks. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in — Assad Motors</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; background: #fff; color: #1f2933;
+           display: flex; min-height: 100vh; margin: 0; align-items: center; justify-content: center; }
+    .box { width: 360px; max-width: 92vw; border: 1px solid #d9e2ec; border-radius: 12px;
+           padding: 28px 26px; }
+    h1 { font-size: 22px; margin: 0 0 4px; color: #102a43; }
+    p.sub { margin: 0 0 18px; color: #829ab1; font-size: 14px; }
+    label { font-size: 14px; color: #486581; display: block; margin: 12px 0 5px; }
+    input { width: 100%; padding: 11px; font-size: 16px; border: 1px solid #bcccdc;
+            border-radius: 8px; box-sizing: border-box; }
+    button { width: 100%; margin-top: 18px; background: #2e75b6; color: #fff; border: 0;
+             border-radius: 8px; padding: 13px; font-size: 17px; cursor: pointer; }
+    button:disabled { background: #9fb3c8; cursor: not-allowed; }
+    #msg { margin-top: 14px; padding: 11px 13px; border-radius: 8px; font-size: 14px; display: none; }
+    .err { background: #fde8e8; color: #842029; display: block !important; }
+    .info { background: #fff4ce; color: #5c4813; display: block !important; }
+    details { margin-top: 14px; } summary { cursor: pointer; color: #829ab1; font-size: 13px; }
+    small { color: #829ab1; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <h1>Assad Motors</h1>
+    <p class="sub">Staff sign in</p>
+
+    <label>Username</label>
+    <input type="text" id="username" autocomplete="username" autofocus />
+
+    <label>Password</label>
+    <div style="position:relative;">
+      <input type="password" id="password" autocomplete="current-password" style="padding-right:46px;" />
+      <button type="button" id="pwToggle" title="Show password" aria-label="Show password"
+        style="position:absolute; top:50%; right:6px; transform:translateY(-50%); width:auto; margin:0;
+               padding:4px 8px; background:none; color:#486581; border:0; font-size:18px; line-height:1; cursor:pointer;">👁</button>
+    </div>
+
+    <button id="loginBtn">Sign in</button>
+    <div id="msg"></div>
+
+    <details>
+      <summary>Server address</summary>
+      <label>API server</label>
+      <input type="text" id="base" placeholder="https://your-server" />
+      <small>Only change this if the dashboards live on a different server.</small>
+    </details>
+  </div>
+
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  // Default the API server address automatically. On localhost the API runs on
+  // :8000 (the pages are served separately, e.g. on :8080), so target :8000 and
+  // ignore any stale :8080 value. Elsewhere the API is same-origin.
+  function defaultBase() {
+    var saved = localStorage.getItem("auth_base");
+    var host = location.hostname;                       // "" when opened as a file://
+    var isLocal = (host === "localhost" || host === "127.0.0.1"
+                   || location.protocol === "file:");
+    if (saved && !(isLocal && /:8080\/?$/.test(saved))) return saved;
+    return isLocal ? "http://localhost:8000" : location.origin;
+  }
+  $("base").value = defaultBase();
+
+  // Password show/hide (eye) toggle.
+  $("pwToggle").onclick = function () {
+    var p = $("password"), show = p.type === "password";
+    p.type = show ? "text" : "password";
+    this.textContent = show ? "🙈" : "👁";
+    this.title = show ? "Hide password" : "Show password";
+    p.focus();
+  };
+
+  // Where to go after login. Only allow known in-app pages (no open redirect).
+  var PAGES = ["owner_panel.html", "inventory_admin.html", "media_admin.html"];
+  function nextParam() {
+    var m = /[?&]next=([^&]+)/.exec(location.search);
+    var n = m ? decodeURIComponent(m[1]) : "";
+    n = n.split("/").pop().split("?")[0];
+    return PAGES.indexOf(n) >= 0 ? n : "";
+  }
+  function landingFor(role) {
+    // Phase 12K (F4): land each role on a page it can actually use. Video Staff
+    // and Social Media Staff have media perms but NO inventory.view, so they must
+    // NOT land on the inventory dashboard (they can't view it). See permissions.py.
+    if (role === "Owner") return "owner_panel.html";
+    if (role === "Video Staff" || role === "Social Media Staff") return "media_admin.html";
+    return "inventory_admin.html";
+  }
+  function baseUrl() { return $("base").value.trim().replace(/\/+$/, ""); }
+  function setMsg(t, cls) { var s = $("msg"); s.textContent = t; s.className = cls; }
+
+  function login() {
+    var u = $("username").value.trim(), p = $("password").value;
+    if (!u || !p) { setMsg("Enter your username and password.", "err"); return; }
+    $("loginBtn").disabled = true;
+    setMsg("Signing in…", "info");
+    fetch(baseUrl() + "/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: u, password: p })
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (x) {
+        if (!x.ok) { setMsg("✗ " + (x.d.detail || "Sign in failed."), "err"); $("loginBtn").disabled = false; return; }
+        localStorage.setItem("auth_base", baseUrl());
+        localStorage.setItem("auth_token", x.d.token);
+        localStorage.setItem("auth_user", x.d.user.username);
+        localStorage.setItem("auth_role", x.d.user.role);
+        localStorage.setItem("auth_full_name", x.d.user.full_name || "");
+        location.href = nextParam() || landingFor(x.d.user.role);
+      })
+      .catch(function (e) { setMsg("Network problem: " + e.message, "err"); $("loginBtn").disabled = false; });
+  }
+
+  $("loginBtn").onclick = login;
+  ["username", "password"].forEach(function (id) {
+    $(id).addEventListener("keydown", function (e) { if (e.key === "Enter") login(); });
+  });
+</script>
+</body>
+</html>

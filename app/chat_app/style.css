@@ -1,0 +1,274 @@
+/* Phase 11A — Assad Motors chat app. White / blue / grey, ChatGPT-like. */
+
+:root {
+  --blue: #2563eb;
+  --blue-dark: #1d4ed8;
+  --blue-soft: #eff4ff;
+  --ink: #1f2933;
+  --ink-soft: #52606d;
+  --grey-line: #e5e9f0;
+  --grey-bg: #f7f8fa;
+  --bubble-user: var(--blue);
+  --bubble-bot: #f1f3f7;
+  --radius: 14px;
+  --sidebar-w: 264px;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  color: var(--ink);
+  background: #fff;
+  display: flex;
+  overflow: hidden;
+}
+
+button { font: inherit; cursor: pointer; }
+svg { width: 20px; height: 20px; display: block; }
+
+/* ── Sidebar ─────────────────────────────────────────────────────────── */
+#sidebar {
+  width: var(--sidebar-w);
+  flex: 0 0 var(--sidebar-w);
+  background: var(--grey-bg);
+  border-right: 1px solid var(--grey-line);
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px;
+  gap: 10px;
+  height: 100dvh;
+}
+#newChatBtn {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; padding: 10px 12px;
+  background: #fff; color: var(--ink);
+  border: 1px solid var(--grey-line); border-radius: 10px;
+  font-weight: 600; font-size: 14px;
+  transition: background .15s, border-color .15s;
+}
+#newChatBtn:hover { background: var(--blue-soft); border-color: #c9d8f5; }
+#newChatBtn svg { width: 16px; height: 16px; color: var(--blue); }
+#recentLabel {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: #9aa5b1; padding: 6px 6px 0;
+}
+#recentList { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.recent-item {
+  display: flex; align-items: center; gap: 6px;
+  padding: 9px 10px; border-radius: 9px; border: 0; background: none;
+  color: var(--ink-soft); font-size: 13.5px; text-align: left; width: 100%;
+}
+.recent-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-item:hover { background: #eef1f5; color: var(--ink); }
+.recent-item.active { background: var(--blue-soft); color: var(--blue-dark); font-weight: 600; }
+.recent-del {
+  border: 0; background: none; color: #b3bcc7; font-size: 15px; line-height: 1;
+  padding: 2px 4px; border-radius: 6px; visibility: hidden;
+}
+.recent-item:hover .recent-del { visibility: visible; }
+.recent-del:hover { color: #b42318; background: #fde8e8; }
+#sidebarFooter { font-size: 11.5px; color: #9aa5b1; padding: 4px 6px; }
+#scrim {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, .38);
+  z-index: 30; backdrop-filter: blur(1px);
+}
+
+/* ── Main column ─────────────────────────────────────────────────────── */
+#main { flex: 1; display: flex; flex-direction: column; height: 100dvh; min-width: 0; }
+
+#topbar {
+  display: flex; align-items: center; gap: 10px;
+  height: 58px; padding: 0 14px;
+  border-bottom: 1px solid var(--grey-line);
+  background: rgba(255, 255, 255, .92);
+  backdrop-filter: blur(8px);
+  flex: 0 0 auto;
+}
+#menuBtn {
+  display: none;
+  border: 0; background: none; color: var(--ink-soft);
+  padding: 8px; border-radius: 8px;
+}
+#menuBtn:hover { background: var(--grey-bg); }
+#brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+#logo {
+  width: 36px; height: 36px; border-radius: 10px; flex: 0 0 auto;
+  background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+  color: #fff; font-weight: 800; font-size: 17px;
+  display: flex; align-items: center; justify-content: center;
+  background-size: cover; background-position: center;
+}
+#brandName { font-weight: 700; font-size: 15.5px; line-height: 1.15; }
+#brandTag { font-size: 11.5px; color: var(--ink-soft); }
+#headerActions { margin-left: auto; display: flex; gap: 6px; }
+.hbtn {
+  display: flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px; border-radius: 10px;
+  color: var(--ink-soft); text-decoration: none;
+  border: 1px solid transparent;
+  transition: background .15s, color .15s;
+}
+.hbtn:hover { background: var(--blue-soft); color: var(--blue-dark); }
+
+/* ── Chat area ───────────────────────────────────────────────────────── */
+#chatScroll { flex: 1; overflow-y: auto; } /* scroll animation controlled in JS */
+#conversation {
+  max-width: 780px; margin: 0 auto;
+  padding: 26px 18px 8px;
+  display: flex; flex-direction: column; gap: 16px;
+}
+
+/* Welcome */
+#welcome { text-align: center; padding: 9vh 8px 20px; }
+#welcomeEmoji { font-size: 44px; }
+#welcomeTitle { font-size: 27px; margin: 12px 0 6px; font-weight: 800; letter-spacing: -.01em; }
+#welcomeSub { color: var(--ink-soft); font-size: 15.5px; margin: 0 0 26px; }
+#chips {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; max-width: 660px; margin: 0 auto;
+}
+.chip {
+  padding: 12px 14px; border-radius: 12px;
+  border: 1px solid var(--grey-line); background: #fff;
+  font-size: 13.5px; color: var(--ink);
+  transition: border-color .15s, background .15s, transform .1s;
+}
+.chip:hover { border-color: var(--blue); background: var(--blue-soft); transform: translateY(-1px); }
+
+/* Messages */
+.msg { display: flex; gap: 10px; animation: rise .22s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.msg.user { justify-content: flex-end; }
+.avatar {
+  width: 30px; height: 30px; border-radius: 9px; flex: 0 0 auto; margin-top: 2px;
+  background: linear-gradient(135deg, var(--blue), var(--blue-dark));
+  color: #fff; font-size: 13px; font-weight: 800;
+  display: flex; align-items: center; justify-content: center;
+  background-size: cover; background-position: center;
+}
+.bubble {
+  max-width: 82%;
+  padding: 11px 15px;
+  border-radius: var(--radius);
+  font-size: 15px; line-height: 1.6;
+  overflow-wrap: break-word;
+}
+.msg.user .bubble {
+  background: var(--bubble-user); color: #fff;
+  border-bottom-right-radius: 5px;
+}
+.msg.bot .bubble {
+  background: var(--bubble-bot); color: var(--ink);
+  border-bottom-left-radius: 5px;
+}
+.bubble a { color: var(--blue-dark); text-decoration: underline; word-break: break-all; }
+.msg.user .bubble a { color: #dbeafe; }
+.bubble ul { margin: 6px 0; padding-left: 20px; }
+.bubble li { margin: 2px 0; }
+.bubble code {
+  background: #e4e9f2; border-radius: 5px; padding: 1px 5px;
+  font-size: 13px; font-family: ui-monospace, Consolas, monospace;
+}
+.bubble strong { font-weight: 700; }
+
+/* Typing indicator */
+.typing { display: inline-flex; gap: 5px; padding: 4px 2px; }
+.typing i {
+  width: 7px; height: 7px; border-radius: 50%; background: #9aa5b1;
+  animation: blink 1.2s infinite both;
+}
+.typing i:nth-child(2) { animation-delay: .18s; }
+.typing i:nth-child(3) { animation-delay: .36s; }
+@keyframes blink { 0%, 70%, 100% { opacity: .25; transform: none; } 35% { opacity: 1; transform: translateY(-3px); } }
+
+/* Vehicle cards */
+.cars { display: flex; flex-direction: column; gap: 10px; margin-left: 40px; }
+.car-card {
+  border: 1px solid var(--grey-line); border-radius: 12px;
+  padding: 12px 14px; background: #fff;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .04);
+}
+.car-title { font-weight: 700; font-size: 14.5px; flex: 1; min-width: 150px; }
+.car-reg {
+  color: var(--ink-soft); font-weight: 600; font-size: 12px;
+  background: var(--grey-bg); border: 1px solid var(--grey-line);
+  border-radius: 6px; padding: 1px 7px; margin-left: 8px;
+  letter-spacing: .03em; white-space: nowrap; vertical-align: 1px;
+}
+.car-price { color: var(--blue-dark); font-weight: 800; font-size: 14.5px; }
+.car-chips { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+.car-chip {
+  font-size: 11.5px; color: var(--ink-soft);
+  background: var(--grey-bg); border: 1px solid var(--grey-line);
+  border-radius: 999px; padding: 3px 9px;
+}
+/* media inside chat */
+.media-row { display: flex; flex-wrap: wrap; gap: 8px; margin-left: 40px; }
+.media-thumb {
+  width: 108px; height: 78px; object-fit: cover; border-radius: 10px;
+  border: 1px solid var(--grey-line); cursor: pointer;
+}
+.media-link {
+  display: inline-flex; align-items: center;
+  font-size: 13px; color: var(--blue-dark); text-decoration: none;
+  border: 1px solid var(--grey-line); border-radius: 999px; padding: 5px 12px;
+  background: #fff;
+}
+.media-link:hover { background: var(--blue-soft); }
+
+/* ── Composer ────────────────────────────────────────────────────────── */
+#composerWrap { flex: 0 0 auto; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
+#composer {
+  max-width: 780px; margin: 0 auto;
+  display: flex; align-items: flex-end; gap: 8px;
+  border: 1.5px solid var(--grey-line); border-radius: 26px;
+  padding: 8px 10px 8px 18px;
+  background: #fff;
+  box-shadow: 0 4px 18px rgba(16, 24, 40, .06);
+  transition: border-color .15s, box-shadow .15s;
+}
+#composer:focus-within { border-color: var(--blue); box-shadow: 0 4px 22px rgba(37, 99, 235, .13); }
+#input {
+  flex: 1; border: 0; outline: 0; resize: none;
+  font: inherit; font-size: 15px; line-height: 1.5;
+  max-height: 132px; padding: 6px 0;
+  background: transparent; color: var(--ink);
+}
+#micBtn, #sendBtn {
+  width: 38px; height: 38px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 0; flex: 0 0 auto;
+}
+#micBtn { background: none; color: #b3bcc7; cursor: not-allowed; }
+#sendBtn { background: var(--blue); color: #fff; transition: background .15s, opacity .15s; }
+#sendBtn:hover { background: var(--blue-dark); }
+#sendBtn:disabled { opacity: .35; cursor: default; }
+#footerNote {
+  text-align: center; font-size: 11.5px; color: #9aa5b1;
+  padding-top: 8px; max-width: 780px; margin: 0 auto;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 959px) {
+  #sidebar {
+    position: fixed; left: 0; top: 0; z-index: 40;
+    transform: translateX(-105%);
+    transition: transform .22s ease;
+    box-shadow: 8px 0 30px rgba(15, 23, 42, .12);
+  }
+  #sidebar.open { transform: none; }
+  #menuBtn { display: flex; }
+}
+@media (max-width: 640px) {
+  #brandTag { display: none; }
+  .bubble { max-width: 88%; font-size: 14.5px; }
+  #conversation { padding: 18px 12px 6px; }
+  .cars, .media-row { margin-left: 0; }
+  #welcome { padding-top: 6vh; }
+  #welcomeTitle { font-size: 22px; }
+  #chips { grid-template-columns: repeat(2, 1fr); }
+  .hbtn { width: 34px; height: 34px; }
+}

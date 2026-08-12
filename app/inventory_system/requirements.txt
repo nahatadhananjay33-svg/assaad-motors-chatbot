@@ -1,0 +1,6 @@
+# Inventory foundation (Phase 2A) — runtime dependencies
+openpyxl>=3.1        # read IVR_Sheet.xlsx (DNJ + DONT TOUCH SOLD sheets)
+
+# Supabase media storage (Phase 8I.1 — production media uploads/deletes).
+# Falls back to the offline in-memory store when SUPABASE_URL/SUPABASE_KEY unset.
+supabase>=2.0

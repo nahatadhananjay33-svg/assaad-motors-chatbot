@@ -1,0 +1,85 @@
+Total conversations: 500
+
+Batch 3: conversations 101–150
+  batch 3: 522/522 turns (100.0%), 50/50 conversations clean
+
+Batch 4: conversations 151–200
+    FAIL: C0153 (english)
+  batch 4: 501/502 turns (99.8%), 49/50 conversations clean
+
+Batch 5: conversations 201–250
+    FAIL: C0212 (english)
+    FAIL: C0215 (english)
+  batch 5: 498/500 turns (99.6%), 48/50 conversations clean
+
+Batch 6: conversations 251–300
+    FAIL: C0266 (hinglish)
+    FAIL: C0278 (hinglish)
+  batch 6: 484/486 turns (99.6%), 48/50 conversations clean
+
+Batch 7: conversations 301–350
+  batch 7: 493/493 turns (100.0%), 50/50 conversations clean
+
+Batch 8: conversations 351–400
+    FAIL: C0354 (hinglish)
+    FAIL: C0383 (hinglish)
+  batch 8: 487/489 turns (99.6%), 48/50 conversations clean
+
+Batch 9: conversations 401–450
+    FAIL: C0443 (hinglish)
+    FAIL: C0449 (hinglish)
+  batch 9: 470/472 turns (99.6%), 48/50 conversations clean
+
+Batch 10: conversations 451–500
+    FAIL: C0483 (hinglish)
+  batch 10: 485/486 turns (99.8%), 49/50 conversations clean
+
+
+=== FINAL SUMMARY (all 500 conversations) ===
+Conversations: 500 | Clean: 489 | Failed: 11
+Turns: 4933 | Passed: 4922 (99.8%) | Failed: 11
+
+Failure categories:
+  Unknown response: 8
+  Context failure: 3
+
+By language:
+  broken_hindi         981/981 (100.0%)
+  english              1489/1492 (99.8%)
+  hinglish             1681/1688 (99.6%)
+  marathi              771/772 (99.9%)
+
+Top failure examples (10 of 11):
+  [C0027 T2 search_cat] Unknown response
+    text: सेदान आहे का
+    intent: unknown | search_cat returned unknown
+  [C0153 T2 followup_price] Context failure
+    text: How much for that?
+    intent: unknown | follow-up/vague returned unknown
+  [C0212 T2 search_budget] Unknown response
+    text: lak 8 ke andar
+    intent: unknown | search_budget returned unknown
+  [C0215 T2 followup_price] Context failure
+    text: How much for that?
+    intent: unknown | follow-up/vague returned unknown
+  [C0266 T3 search_budget] Unknown response
+    text: lak 8 ke andar
+    intent: unknown | search_budget returned unknown
+  [C0278 T1 search_budget] Unknown response
+    text: lak 8 ke andar
+    intent: unknown | search_budget returned unknown
+  [C0354 T2 search_budget] Unknown response
+    text: lak 8 ke andar
+    intent: unknown | search_budget returned unknown
+  [C0383 T4 search_budget] Unknown response
+    text: lak 8 ke andar
+    intent: unknown | search_budget returned unknown
+  [C0443 T1 search_budget] Unknown response
+    text: lak 8 ke andar
+    intent: unknown | search_budget returned unknown
+  [C0449 T2 search_budget] Unknown response
+    text: lak 8 ke andar
+    intent: unknown | search_budget returned unknown
+
+Written: phase8_final_summary.md
+Done.
