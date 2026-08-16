@@ -20,8 +20,18 @@ pilot chatbot.
    retrieval_engine._matches, which requires the digits to be the plate's
    COMPLETE trailing group — so this cannot loosen into a wrong-car answer.
 
-Data-driven off the CURRENT Excel: the cars are looked up by their real trailing
-digit groups, so these keep working after an inventory swap.
+3. A rupee budget written out in full was not understood. "under 500000" set no
+   ceiling at all, and worse, "500000 ke andar" / "300000 se kam" were read as
+   PLATE lookups — a car-number search instead of a budget. Only lakh forms
+   ("5 lakh ke andar") and the small-number shorthand ("under 8") worked.
+   Fix: a 5-8 digit amount carrying an explicit ceiling/floor cue is a budget,
+   and it reclaims digits that the partial-plate pass had already taken. A bare
+   number with no cue keeps its plate meaning, and "under 60000 km" stays a
+   distance ceiling.
+
+All three are about the same underlying question — what does a number in a
+customer's sentence actually mean? Data-driven off the CURRENT Excel: cars are
+looked up by their real trailing digit groups, so these survive an inventory swap.
 """
 
 from __future__ import annotations
@@ -87,6 +97,42 @@ class TestPartialRegIdentifiesVehicleForMedia(unittest.TestCase):
                          "a bare photo request must still ask which car")
 
 
+class TestRupeeBudgetWrittenInFull(unittest.TestCase):
+    def test_ceiling_forms(self):
+        for phrase, want in [("under 500000", 500_000), ("under 400000", 400_000),
+                             ("under 300000", 300_000), ("500000 ke andar", 500_000),
+                             ("300000 se kam", 300_000), ("400000 tak", 400_000),
+                             ("budget 600000", 600_000), ("upto 750000", 750_000),
+                             ("below 250000", 250_000)]:
+            q = qp.parse(phrase)
+            self.assertEqual(q.price_max, want, f"no ceiling for {phrase!r}")
+            self.assertIsNone(q.reg_partial,
+                              f"{phrase!r} must not stay a plate lookup")
+
+    def test_floor_forms(self):
+        self.assertEqual(qp.parse("500000 se upar").price_min, 500_000)
+        self.assertEqual(qp.parse("above 600000").price_min, 600_000)
+
+    def test_km_ceiling_is_not_money(self):
+        for phrase, km in [("under 60000 km", 60_000), ("under 20000 km", 20_000),
+                           ("50000 km se kam", 50_000)]:
+            q = qp.parse(phrase)
+            self.assertIsNone(q.price_max, f"{phrase!r} wrongly became a budget")
+            self.assertEqual(q.km_max, km, f"{phrase!r} lost its km ceiling")
+
+    def test_year_and_bare_number_unaffected(self):
+        self.assertIsNone(qp.parse("under 2015").price_max)
+        self.assertEqual(qp.parse("under 2015").year_exact, 2015)
+        # no budget cue -> the digits keep their plate meaning
+        bare = qp.parse("500000")
+        self.assertIsNone(bare.price_max)
+        self.assertEqual(bare.reg_partial, "500000")
+
+    def test_lakh_shorthand_still_wins(self):
+        self.assertEqual(qp.parse("under 8").price_max, 800_000)
+        self.assertEqual(qp.parse("5 lakh ke andar").price_max, 500_000)
+
+
 @unittest.skipUnless(os.path.exists(XLSX), "IVR_Sheet.xlsx not found")
 class TestLast4EndToEnd(unittest.TestCase):
     @classmethod
@@ -122,6 +168,15 @@ class TestLast4EndToEnd(unittest.TestCase):
             r = self.svc.handle(phrase, session_id=f"k-{phrase}")
             self.assertTrue(any(w in (r.response or "") for w in want),
                             f"{phrase!r} -> {r.response!r} (expected {want})")
+
+    def test_rupee_budget_results_respect_the_ceiling(self):
+        """Every car shown for "under 500000" must actually be under 5 lakh."""
+        r = self.svc.handle("under 500000 wali cars dikhao", session_id="rb1")
+        cards = getattr(r, "items", None) or []
+        over = [(c.registration_no, c.price_lakh) for c in cards
+                if c.price_lakh and c.price_lakh > 5.0]
+        self.assertEqual(over, [], f"cars above the 5 lakh ceiling: {over}")
+        self.assertGreater(r.count or 0, 0, "budget search returned nothing")
 
     def test_last4_photo_request_names_the_car_not_a_clarify(self):
         r = self.svc.handle(f"{self.tail} ki photos bhejo", session_id="p1")

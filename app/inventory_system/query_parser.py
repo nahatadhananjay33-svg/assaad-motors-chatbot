@@ -1397,6 +1397,33 @@ def _parse_price(text: str, q: Query) -> None:
                 q.intents.add("price")
                 break
 
+    # Rupee budget written out in full — "under 500000", "500000 ke andar",
+    # "300000 se kam", "400000 tak". An explicit ceiling/floor cue is REQUIRED, so
+    # a bare number keeps its plate meaning ("500000" alone is still a lookup).
+    # This runs after the partial-plate pass, so when the digits were
+    # provisionally taken as a plate it takes them back — "500000 ke andar" was
+    # answering as a car-number search instead of a budget.
+    if q.price_max is None and q.price_min is None:
+        for m in re.finditer(r"(?<![\d.])(\d{5,8})(?!\d)", text):
+            value = int(m.group(1))
+            if not (50_000 <= value <= 50_000_000):
+                continue          # outside any believable used-car price
+            after = text[m.end():m.end() + 16]
+            if re.match(r"\s*(k\b|km|kms|kilo|kilometers?|kilometres?|thousand|"
+                        r"hazaar|seater|seat|log)", after):
+                continue          # "under 60000 km" is a distance ceiling, not money
+            window = text[max(0, m.start() - 24): m.end() + 16]
+            if any(w in window for w in _CEIL_WORDS):
+                q.price_max = value
+            elif any(w in window for w in _FLOOR_WORDS):
+                q.price_min = value
+            else:
+                continue          # no budget cue -> not a budget; leave it alone
+            q.intents.add("price")
+            if q.reg_partial == m.group(1):
+                q.reg_partial = None          # money all along, not a car number
+            break
+
     # Phase 11A: "below 8" / "under 6" / "upto 10" — a bare small number after an
     # English ceiling word, no unit, is a lakh budget for a used car (nobody means
     # ₹8 for a car). Guarded to 1–40 so it never eats a km ceiling ("under 20000
