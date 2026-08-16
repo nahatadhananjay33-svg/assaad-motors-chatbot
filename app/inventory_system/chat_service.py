@@ -345,6 +345,15 @@ _PRICE_FOLLOWUP_WORDS = (
 )
 
 
+def _followup_text(message: str) -> str:
+    """Padded + lowercased message for the substring gates below, run through the
+    parser's normalization first. That is what lets the Hindi / phonetic spellings
+    of the price noun (कीमत, मूल्य, keemaat, keemath …) arrive here as the
+    canonical "price" token — the same vocabulary the parser and the response
+    formatter see — instead of each gate carrying its own synonym list."""
+    return f" {normalize_typos((message or '').strip()).lower()} "
+
+
 def _is_attr_followup(message: str, q: Query) -> bool:
     """True when `message` asks about an attribute of an already-selected
     vehicle (so we should reuse session context), as opposed to a fresh search."""
@@ -380,7 +389,7 @@ def _is_attr_followup(message: str, q: Query) -> bool:
         return True
     if detect_media_intent(message):
         return True
-    text = f" {(message or '').strip().lower()} "
+    text = _followup_text(message)
     # km / price questions — but never a budget search ("under 5 lakh", which
     # carries a price_max/min filter or a cheapest sort).
     if q.price_max is None and q.price_min is None and not q.sort_cheapest:
@@ -452,7 +461,7 @@ def _is_price_followup(message: str, q: Query) -> bool:
             # (capacity/power/condition?), never quote the car's price.
             or getattr(q, "ambiguous_field", None)):
         return False
-    text = f" {(message or '').strip().lower()} "
+    text = _followup_text(message)
     return any(w in text for w in _PRICE_FOLLOWUP_WORDS)
 
 

@@ -154,7 +154,12 @@ class TestReelBehaviour(unittest.TestCase):
 
     # ---- car SOLD / not in stock -> honest 'not available', never fabricate ----
     def test_absent_car_not_fabricated(self):
-        for i, m in enumerate(["MH99XX0000 hai kya?", "XUV700 hai kya?",
+        # NOTE: the earlier "XUV700" example was actually IN STOCK (stored as
+        # "Xuv 700"); the old model matcher just couldn't fold "XUV700" == "Xuv
+        # 700", so it looked absent. That was the digit-name recognition bug (now
+        # fixed + covered by model_recognition_tests.py). Use a genuinely-absent
+        # model here so the "absent -> not fabricated" property is tested correctly.
+        for i, m in enumerate(["MH99XX0000 hai kya?", "Kushaq hai kya?",
                                "0001 wali gaadi hai kya?"]):
             r = self._h(m, f"na{i}")
             self.assertEqual(r.count, 0, m)

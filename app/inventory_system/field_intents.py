@@ -58,6 +58,11 @@ FIELD_SPECS: Dict[str, Dict[str, Any]] = {
     "mileage_arai_kmpl": {"display": "Mileage (ARAI)", "unit": " kmpl", "type": "float", "role": "attr",
         "labels": ["mileage kitna", "mileage kitni", "kitna mileage", "average kitna",
                    "kitna average", "arai mileage", "mileage kya", "kmpl", "kitne ka average",
+                   # "average kya/batao" — "average" unambiguously means km/l here.
+                   # NOTE: bare "mileage" is deliberately NOT a label: on its own it
+                   # could mean running (km chali) or km/l, so it must reach the 12J
+                   # clarify instead of guessing. See AMBIGUOUS_FIELDS["mileage"].
+                   "average kya", "kya average", "average batao",
                    "मायलेज किती", "किती मायलेज", "ऍव्हरेज किती", "milage kitna",
                    # Hindi Devanagari spelling "माइलेज" (Marathi "मायलेज" above)
                    "माइलेज", "माइलेज कितना", "कितना माइलेज"]},

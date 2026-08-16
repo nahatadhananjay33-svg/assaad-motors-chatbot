@@ -169,6 +169,10 @@ def _build_model_lookup() -> Dict[str, str]:
 MODEL_LOOKUP = _build_model_lookup()
 # phrases sorted longest-first so 'corolla altis' beats 'corolla'
 _MODEL_PHRASES = sorted(MODEL_LOOKUP.keys(), key=lambda s: -len(s))
+# Subset carrying digits ("525 i", "xuv500", "3 series", "800"). A digit-run that
+# belongs to one of these is a MODEL NAME, never a partial number plate. Derived
+# from MODEL_LOOKUP so it tracks whatever the current inventory holds.
+_DIGIT_MODEL_PHRASES = [p for p in _MODEL_PHRASES if any(c.isdigit() for c in p)]
 
 
 def register_inventory_models(models) -> None:
@@ -190,6 +194,8 @@ def register_inventory_models(models) -> None:
     if added:
         # mutate in place so the module-global reference used by parse() sees it
         _MODEL_PHRASES[:] = sorted(MODEL_LOOKUP.keys(), key=lambda s: -len(s))
+        _DIGIT_MODEL_PHRASES[:] = [p for p in _MODEL_PHRASES
+                                   if any(c.isdigit() for c in p)]
 
 FUEL_WORDS: Dict[str, str] = {
     "diesel": FuelType.DIESEL,
@@ -351,8 +357,10 @@ TRANSMISSION_QUERY_WORDS = [
     "which transmission", "gearbox", "gear box", "gear kaisa", "gear kaisi",
     "gear kya", "kaunsa gear", "kaun sa gear", "konsa gear", "gear type",
     "gear system", "kis gear",
-    # Devanagari
-    "गिअरबॉक्स", "गियरबॉक्स", "ट्रान्समिशन", "कोणते गिअर",
+    # Devanagari — both spellings: Marathi "ट्रान्समिशन" (न्) and Hindi
+    # "ट्रांसमिशन" (anusvara). Same script-variant trap as कीमत/किंमत: having only
+    # one spelling silently loses every customer who writes the other.
+    "गिअरबॉक्स", "गियरबॉक्स", "ट्रान्समिशन", "ट्रांसमिशन", "कोणते गिअर",
 ]
 SEATS_QUERY_WORDS = [
     "kitni seat", "kitni seats", "kitne seat", "kitne seats", "how many seats",
@@ -362,6 +370,8 @@ SEATS_QUERY_WORDS = [
     # Phase 12J: bare "seater" question forms ("kitne seater hai?", "seater kitna")
     "kitne seater", "kitna seater", "kitni seater", "seater kitna", "seater kitni",
     "kitne seater hai", "how many seater hai",
+    # "sitting" is how a lot of customers say "seating"
+    "kitni sitting", "kitne sitting", "sitting kitni", "sitting capacity",
     # Devanagari
     "किती सीट", "कितनी सीट", "किती जण बसतात", "आसन क्षमता", "किती सीटर", "कितने सीटर",
 ]
@@ -515,14 +525,49 @@ _TYPO_MAP = {
     r"\baxident\b": "accident", r"\baksident\b": "accident",
     r"\bwagan r\b": "wagon r", r"\bwagan\b": "wagon",
     r"\bneksn\b": "nexon",
+    r"\bprise\b": "price", r"\bpirce\b": "price", r"\bpriec\b": "price",
 }
+
+
+# ── Price vocabulary folding (one source of truth) ───────────────────────────
+# Customers write the price noun a dozen ways across three scripts: keemat /
+# kimmat / keemaat / keemath, कीमत / किंमत / मूल्य, "कितने की". Four call sites
+# each kept their OWN price-synonym list (parser intents, response_formatter's
+# explicit-price check, chat_service's two follow-up gates) — which is exactly how
+# standard Hindi "कीमत" ended up unrecognised everywhere while Marathi "किंमत"
+# worked: the spelling was added to some lists and not others.
+#
+# Fold the whole PHONETIC FAMILY to the canonical token "price" here instead, in
+# the normalization pass those call sites already share. One regex per family —
+# not one entry per spelling — so near-miss variants are covered too and every
+# consumer gains them at once.
+_PRICE_FAMILY_PATTERNS = (
+    # Roman: keemat/kimat/kimmat/kemat/kiimat/keemaat/keemattt/keemath/qimat
+    r"(?<!\w)[kq][iey]+m+a+t+h?(?!\w)",
+    # Roman: mulya / moolya  (मूल्य transliterated). 'oo'/'u' only, so an ordinary
+    # word like "molly" is not swallowed.
+    r"(?<!\w)m(?:u|oo)l+y[ae]?(?!\w)",
+    # Devanagari कीमत / किंमत / किमत / कीमती — matra- and anusvara-insensitive, so
+    # the Hindi and Marathi spellings fold together instead of being listed twice.
+    r"क[िीु]*[ंँ]?म+[ािीेो]*त[ेंाीों]*",
+    # Devanagari दाम(ों) / भाव / मूल्य / रेट
+    r"दाम[ोंे]*|भाव|म[ूु]ल्?य|रेट",
+    # Devanagari "for how much": कितने की / कितने में / कितने का
+    r"कितने\s*(?:की|में|मे|का)",
+)
+_PRICE_FAMILY_RE = re.compile("|".join(_PRICE_FAMILY_PATTERNS), re.I)
+
+
+def normalize_price_vocab(text: str) -> str:
+    """Fold every spelling of the price noun to the canonical token ' price '."""
+    return _PRICE_FAMILY_RE.sub(" price ", text or "")
 
 
 def normalize_typos(text: str) -> str:
     out = text or ""
     for pat, repl in _TYPO_MAP.items():
         out = re.sub(pat, repl, out, flags=re.I)
-    return out
+    return normalize_price_vocab(out)
 
 
 # A pasted URL / social link (e.g. an Instagram reel link) must NEVER contribute an
@@ -573,14 +618,57 @@ def _has(text: str, phrase: str) -> bool:
     return _has_pattern(phrase).search(text) is not None
 
 
+def _digits_belong_to_a_model(text: str, digits: str) -> bool:
+    """True when `digits` is part of a MODEL NAME actually present in the query —
+    the '500' of XUV500, the '525' of '525 I', the '3' of '3 Series' — rather than
+    a standalone partial number plate.
+
+    Only the winning `q.model` used to be checked, so a SECOND model named in the
+    same sentence still leaked its digits into `reg_partial` ("3 Series aur 525 I
+    me kaunsi behtar hai?" -> model='3 Series' + reg_partial='525' -> 0 matches ->
+    the bot wrongly said both cars were unavailable). Scanning the catalogue
+    covers every model in the sentence. Requiring the full phrase to be PRESENT
+    keeps genuine plate lookups intact — "525 number wali gaadi" has no '525 i',
+    so it is still read as a plate."""
+    for phrase in _DIGIT_MODEL_PHRASES:
+        if digits in phrase and _has(text, phrase):
+            return True
+    return False
+
+
+# An explicit "these digits are a number PLATE" cue sitting directly beside the
+# digits. Deliberately adjacency-scoped: "1994 number wali gaadi" is a plate
+# lookup, while "2015 model ka number kya hai" keeps 2015 as the model year.
+_PLATE_CUE_AFTER_RE = re.compile(
+    r"^\s*(?:number|numbar|nambar|plate|नंबर|नम्बर)(?!\w)")
+_PLATE_CUE_BEFORE_RE = re.compile(
+    r"(?:number|numbar|nambar|plate|नंबर|नम्बर)\s*$")
+
+
+def _plate_cue_adjacent(before: str, after: str) -> bool:
+    """True when the customer explicitly called the adjacent digits a number plate.
+
+    Year-like 4-digit runs are normally read as a MODEL YEAR, which left every car
+    whose plate happens to end 19xx/20xx unreachable by its last-4 — the bot
+    answered "not available" for a car standing on the lot (5 such cars in the
+    current stock: …1938, …1994, …1996, …2001, …2005). An explicit plate word next
+    to the digits removes the ambiguity."""
+    return bool(_PLATE_CUE_AFTER_RE.search(after or "")
+                or _PLATE_CUE_BEFORE_RE.search(before or ""))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Parse
 # ─────────────────────────────────────────────────────────────────────────────
 def parse(utterance: str) -> Query:
-    # Drop pasted URLs/links first so a reel link's shortcode never becomes a
+    # Drop pasted URLs/links FIRST so a reel link's shortcode never becomes a
     # spurious model / partial-plate filter (a wrong-car answer). The reel intent
     # is still detected upstream from the raw message.
-    raw = strip_urls(normalize_typos(utterance or ""))
+    # Stripping before normalizing matters: normalization rewrites substrings, so
+    # running it first could rewrite text INSIDE a link and split that one token
+    # into fragments — after which strip_urls only removes the fragment that still
+    # looks like a URL and the leftover digits could be read as a plate.
+    raw = normalize_typos(strip_urls(utterance or ""))
     q = Query(raw=raw)
     q.registration = extract_registration(raw)
     text = _norm(raw)
@@ -962,7 +1050,10 @@ def parse(utterance: str) -> Query:
     # ── bare 4-digit model year, e.g. "2019 nexon photos" (TASK3) ──
     if q.year_min is None and q.price_max is None and q.price_min is None:
         m = _YEAR_EXACT_RE.search(text)
-        if m:
+        # …unless the customer explicitly called those digits a number plate
+        # ("1994 number wali gaadi"), in which case they are a registration tail,
+        # not a model year — see _plate_cue_adjacent.
+        if m and not _plate_cue_adjacent(text[:m.start()], text[m.end():]):
             q.year_exact = int(m.group(0))
 
     # ── intents: availability ──
@@ -1021,10 +1112,17 @@ def parse(utterance: str) -> Query:
             # resolve to the car. But NOT when the number is clearly a quantity
             # the dedicated parsers didn't catch: a km / lakh / rupee amount
             # (unit word right after) or a budget ("budget 500000", "under …").
-            m2 = re.search(r"(?<!\d)(\d{3,6})(?!\d)", text)
-            if m2 and not re.fullmatch(r"(19|20)\d{2}", m2.group(1)):
+            # A digit-run immediately preceded by a LETTER is part of an
+            # alphanumeric token (a model name like XUV500 / KUV100 / TUV300),
+            # never a standalone plate — so anchor on a non-alphanumeric boundary.
+            m2 = re.search(r"(?<![a-z\d])(\d{3,6})(?!\d)", text)
+            if m2:
                 after = text[m2.end():]
                 before = text[:m2.start()]
+                # A year-like run is a MODEL YEAR by default, and only a plate when
+                # the customer says so ("1994 number wali gaadi").
+                year_like = (bool(re.fullmatch(r"(19|20)\d{2}", m2.group(1)))
+                             and not _plate_cue_adjacent(before, after))
                 unit_after = re.match(
                     r"\s*(km|kms|kilometers?|kilometres?|lakhs?|lacs?|crores?|"
                     r"rupees?|rs)\b", after)
@@ -1037,7 +1135,14 @@ def parse(utterance: str) -> Query:
                 # let the standalone-digit heuristic hijack it into a reg lookup.
                 spec_number = (m2.group(1) == "360"
                                and re.match(r"\s*(degree\s*)?camera", after))
-                if not unit_after and not cue_before and not spec_number:
+                # A digit-run that belongs to a MODEL NAME (the "500" in "XUV500",
+                # the "700" in "Xuv 700", "100" in "KUV100", the "525" of a second
+                # model in a comparison) is the model — not a partial plate — even
+                # when spaced. Don't hijack it.
+                model_digits = (bool(q.model and m2.group(1) in _norm(q.model))
+                                or _digits_belong_to_a_model(text, m2.group(1)))
+                if (not unit_after and not cue_before and not spec_number
+                        and not model_digits and not year_like):
                     q.reg_partial = m2.group(1)
         if q.reg_partial:
             q.intents.add("availability")

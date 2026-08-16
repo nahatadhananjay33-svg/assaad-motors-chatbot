@@ -25,6 +25,15 @@ from typing import Callable, List, Optional
 from inventory_models import InventoryItem, BodyType, LocationType
 from query_parser import Query
 
+
+def _model_key(s: str) -> str:
+    """Space/hyphen-insensitive model key so an inventory spelling and its market
+    alias fold together: 'Xuv 700' == 'XUV700' == 'xuv-700'. Prevents an
+    in-stock model from being missed just because the Excel and the alias table
+    space it differently."""
+    return (s or "").lower().replace(" ", "").replace("-", "")
+
+
 # category -> body_type set the customer likely means
 CATEGORY_BODY_TYPES = {
     "SUV": {BodyType.SUV, BodyType.COMPACT_SUV},
@@ -86,7 +95,7 @@ def _matches(item: InventoryItem, q: Query, *, skip: Optional[set] = None) -> bo
             return False
 
     if q.model and "model" not in skip:
-        if (item.model or "").lower() != q.model.lower():
+        if _model_key(item.model) != _model_key(q.model):
             return False
     if q.make and "make" not in skip:
         if item.make != q.make:
@@ -312,7 +321,7 @@ class RetrievalEngine:
 
 def _body_type_of_model(items, model: str):
     for i in items:
-        if (i.model or "").lower() == model.lower():
+        if _model_key(i.model) == _model_key(model):
             return i.body_type
     import inventory_loader as L
     return L._body_type_for(model)
