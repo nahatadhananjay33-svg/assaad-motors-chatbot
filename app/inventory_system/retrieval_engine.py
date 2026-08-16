@@ -19,11 +19,37 @@ surface count + top-N + one clarifier.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
 from inventory_models import InventoryItem, BodyType, LocationType
 from query_parser import Query
+
+
+# A fuel that is FITTED ON TOP of a base fuel. Indian bi-fuel cars are recorded
+# as "Petrol+CNG", and a customer asking for a CNG car means exactly those.
+_SECONDARY_FUELS = {"cng", "lpg"}
+
+
+def _fuel_matches(item_fuel: Optional[str], want: str) -> bool:
+    """True when the car answers the requested fuel, deliberately asymmetric.
+
+    * Asking for CNG/LPG matches combined values — "cng cars" must find the 14
+      Petrol+CNG cars as well as the 9 pure CNG ones. Exact equality found 9 of
+      23, so most of the CNG stock was invisible.
+    * Asking for petrol/diesel stays an EXACT column match, like an Excel filter.
+      A Petrol+CNG car is sold as a CNG car; folding it into "petrol cars" would
+      inflate that count (89 -> 103) and hand a CNG-kitted car to someone who
+      asked for a plain petrol one."""
+    if not item_fuel:
+        return False
+    w = str(want).strip().lower()
+    if w in _SECONDARY_FUELS:
+        have = {p.strip().lower()
+                for p in re.split(r"[+/,&]| and ", str(item_fuel)) if p.strip()}
+        return w in have
+    return str(item_fuel).strip().lower() == w
 
 
 def _model_key(s: str) -> str:
@@ -101,7 +127,7 @@ def _matches(item: InventoryItem, q: Query, *, skip: Optional[set] = None) -> bo
         if item.make != q.make:
             return False
     if q.fuel and "fuel" not in skip:
-        if item.fuel_norm != q.fuel:
+        if not _fuel_matches(item.fuel_norm, q.fuel):
             return False
     if q.transmission and "transmission" not in skip:
         if item.transmission_norm != q.transmission:
@@ -233,6 +259,15 @@ class RetrievalEngine:
     def _pool(self, q: Query):
         if q.registration or q.model or q.reg_partial:
             return self.all_facing, False           # named car/number: search everything
+        # An EXPLICIT filter is the customer telling us exactly what they want, so
+        # it must be answered from the WHOLE book — the same way an Excel filter
+        # sees every row. Restricting to the >2L "IVR" slice here silently hid the
+        # 47 cars under ₹2 lakh: "petrol cars" returned 56 of the 89 in stock, and
+        # "cng cars" 6 of 23. Only a bare, unfiltered browse still starts from the
+        # IVR slice (that restriction exists to lead with the sellable stock, not
+        # to hide matches the customer explicitly asked for).
+        if q.has_any_filter():
+            return self.all_facing, False
         ivr = [i for i in self.all_facing if i.is_ivr_eligible]
         # Phase 11C: an explicit budget ceiling invites budget cars — extend the
         # default (>2L) pool with sub-2L cars that fit the stated budget, so

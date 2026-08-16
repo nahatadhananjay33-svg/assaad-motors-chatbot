@@ -190,9 +190,26 @@ class TestFuel(RetrievalTestBase):
         self.assertTrue(all(m.fuel_norm == FuelType.PETROL for m in r.matches))
 
     def test_cng_family(self):
+        """A CNG search covers the whole CNG FAMILY, bi-fuel included.
+
+        Indian CNG cars are overwhelmingly bi-fuel and are recorded as
+        "Petrol+CNG". The old assertion demanded exact equality with CNG, which
+        hid those cars: the dealership's stock has 9 pure CNG and 14 Petrol+CNG,
+        and a customer asking for a CNG car means all 23. Asking for petrol or
+        diesel stays an exact match (see test_petrol / test_diesel), so a
+        CNG-kitted car is never handed to someone who asked for plain petrol."""
         r = self.engine.search(parse("CNG cars"))
         self.assertTrue(r.found)
-        self.assertTrue(all(m.fuel_norm == FuelType.CNG for m in r.matches))
+        # every match must genuinely run on CNG …
+        for m in r.matches:
+            fuels = {p.strip().lower()
+                     for p in str(m.fuel_norm or "").replace("/", "+").split("+")}
+            self.assertIn("cng", fuels, f"{m.registration_no} is not a CNG car")
+        # … and the bi-fuel cars must not be left out
+        all_cng = [i for i in self.engine.all_facing
+                   if "cng" in str(i.fuel_norm or "").lower()]
+        self.assertEqual(len(r.matches), len(all_cng),
+                         "CNG search must return every CNG-capable car")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

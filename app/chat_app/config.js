@@ -16,15 +16,19 @@ window.DEALER_CONFIG = {
   // Welcome screen
   greeting: "Welcome to Assad Motors",
   subGreeting: "How can I help you today?",
+  // Opening chips. These are the filters customers actually use, so each one is
+  // worded exactly as it is sent to the bot — verified to return results against
+  // the live inventory (Manual 131, Automatic 56, Petrol 89, CNG 23, Luxury 27,
+  // Sunroof 2, 7-seater 33). "Sunroof cars" keeps the plural noun on purpose:
+  // that is what marks it as a search rather than a question about one car.
   suggestions: [
-    "Looking for an SUV",
-    "Cars under ₹10 lakh",
-    "Show Honda City",
-    "Finance options",
-    "Automatic cars",
-    "Diesel cars",
-    "Petrol cars",
-    "Luxury cars"
+    "Manual",
+    "Automatic",
+    "Petrol",
+    "Cng cars",
+    "Luxury cars",
+    "Sunroof cars",
+    "7 seater"
   ],
 
   inputPlaceholder: "Ask anything about our cars...",

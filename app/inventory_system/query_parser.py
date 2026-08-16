@@ -1129,7 +1129,12 @@ def parse(utterance: str) -> Query:
                 before = text[:m2.start()]
                 # A year-like run is a MODEL YEAR by default, and only a plate when
                 # the customer says so ("1994 number wali gaadi").
-                year_like = (bool(re.fullmatch(r"(19|20)\d{2}", m2.group(1)))
+                # The range MUST be the one _YEAR_EXACT_RE actually accepts. It
+                # used to be the looser (19|20)\d{2}, so a plate ending 1938 was
+                # suppressed here as "a year" but then rejected by the year parser
+                # too — the digits fell through both paths and the car became
+                # unreachable by its number.
+                year_like = (bool(_YEAR_EXACT_RE.fullmatch(m2.group(1)))
                              and not _plate_cue_adjacent(before, after))
                 unit_after = re.match(
                     r"\s*(km|kms|kilometers?|kilometres?|lakhs?|lacs?|crores?|"

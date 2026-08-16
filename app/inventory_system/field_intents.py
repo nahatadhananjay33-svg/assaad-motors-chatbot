@@ -242,7 +242,13 @@ _PHRASE_TO_ATTR: List[Tuple[str, str]] = sorted(
 _FILTER_CUES = ("wali", "wale", "wala", "vali", "vala", "walon", "walo", "chahiye",
                 "chaahiye", "chaiye", "dikhao", "dikha do", "show me", "with ",
                 "cars with", "gaadi with", "वाली", "वाले", "पाहिजे", "हवी", "हव्या",
-                "असलेली", "असलेल्या")
+                "असलेली", "असलेल्या",
+                # A PLURAL browse noun is a filter cue too: "sunroof cars" is a
+                # search, not a question about one car. Without this it parsed as
+                # an attribute question and returned nothing at all. Only the
+                # plural forms — singular "car"/"gaadi" stays ambiguous ("is car
+                # me sunroof hai?" must remain an attribute question).
+                "cars", "gaadiyan", "gaadiya", "gadiya", "गाड़ियां", "गाड़िया")
 
 
 def _has_filter_cue(text: str) -> bool:
