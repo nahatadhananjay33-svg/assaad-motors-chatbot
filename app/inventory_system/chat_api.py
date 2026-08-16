@@ -43,6 +43,8 @@ import user_management
 import permissions
 import auth
 import audit
+import developer_auth
+import developer_dashboard
 from security import SecurityGate, RateLimiter
 
 ACCESS_LOG = _build_logger()
@@ -105,6 +107,46 @@ def route(method: str, path: str, body: bytes, service: ChatService,
         return auth.handle_logout(session_token)
     if method == "GET" and path == "/auth/me":
         return auth.handle_me(session_token)
+
+    # ── Developer Dashboard (read-only monitoring / observability) ──
+    # Its OWN separate authorization layer: EVERY /developer/* endpoint requires
+    # an active "Developer" session (developer_auth.authorize) — customers,
+    # staff, and even the Owner are rejected. All handlers are strictly
+    # read-only; nothing here mutates inventory/media/Excel/users/sessions.
+    if path == "/developer" or path.startswith("/developer/"):
+        denial = developer_auth.authorize(session_token)
+        if denial is not None:
+            _log(ACCESS_LOG, logging.WARNING, "developer_denied",
+                 path=path, status=denial[0])
+            return denial
+        if method != "GET":
+            return 405, {"error": "method_not_allowed",
+                         "detail": f"{method} not allowed on {path}."}
+        try:
+            if path == "/developer/overview":
+                return developer_dashboard.handle_overview(service)
+            if path == "/developer/chats":
+                return developer_dashboard.handle_chats(service, query_string)
+            if path.startswith("/developer/chats/"):
+                sid = path[len("/developer/chats/"):]
+                return developer_dashboard.handle_chat_detail(service, sid)
+            if path == "/developer/activity":
+                return developer_dashboard.handle_activity(query_string)
+            if path == "/developer/inventory":
+                return developer_dashboard.handle_inventory(service)
+            if path == "/developer/inventory/history":
+                return developer_dashboard.handle_inventory_history(query_string)
+            if path == "/developer/health":
+                return developer_dashboard.handle_health(service)
+            if path == "/developer/errors":
+                return developer_dashboard.handle_errors(query_string)
+            if path == "/developer/analytics":
+                return developer_dashboard.handle_analytics(service, query_string)
+        except Exception as e:
+            _log(ACCESS_LOG, logging.ERROR, "developer_error", path=path, error=str(e))
+            return 500, {"error": "developer_failed",
+                         "detail": "Monitoring query failed."}
+        return 404, {"error": "not_found", "detail": f"No route for {method} {path}."}
 
     # ── Phase 10C: role-based permission gate (single choke point) ──
     # Identity is the logged-in session (Phase 10D); the legacy X-Acting-User
@@ -456,6 +498,20 @@ def run(host: str = None, port: int = None) -> None:
     host = host or config.HOST
     port = port or config.PORT
     check_startup_security()        # warn (dev) / refuse (production) on insecure config
+    # Developer Dashboard startup (additive, non-fatal):
+    #   * mirror WARNING+ log events into the in-process error ring for the
+    #     Errors view (passive; does not change any existing logging behaviour);
+    #   * env-required Developer account seeding (no-op unless DEV_DASHBOARD_USER
+    #     and DEV_DASHBOARD_PASSWORD are both set).
+    try:
+        developer_dashboard.install_error_capture()
+    except Exception as e:
+        _log(ACCESS_LOG, logging.WARNING, "dev_error_capture_failed", error=str(e))
+    try:
+        if developer_auth.seed_developer():
+            _log(ACCESS_LOG, logging.INFO, "developer_account_seeded")
+    except Exception as e:
+        _log(ACCESS_LOG, logging.WARNING, "developer_seed_failed", error=str(e))
     _root_data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "data")
     service = InstrumentedChatService(pilot_log_db=os.path.join(_root_data_dir, "pilot_query_log.db"))
     httpd = ThreadingHTTPServer((host, port), make_handler(service, default_gate()))

@@ -45,8 +45,12 @@ _MS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "media_
 if _MS_DIR not in sys.path:
     sys.path.insert(0, _MS_DIR)
 from _util import FileLock  # noqa: E402
+import config  # noqa: E402
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+# Uses config.DATA_DIR so it follows CHAT_DATA_DIR — in Docker that is the
+# mounted /data volume, so staff accounts survive container rebuilds/redeploys
+# (locally this resolves to the same <module>/data path as before).
+DATA_DIR = config.DATA_DIR
 USERS_PATH = os.path.join(DATA_DIR, "users.json")
 _LOCK = USERS_PATH + ".lock"
 
@@ -204,6 +208,10 @@ def handle_update(body: bytes) -> Tuple[int, Dict[str, Any]]:
             if u.get("role") == "Owner":
                 return 400, {"status": "error",
                              "detail": "The Owner account's role cannot be changed."}
+            if u.get("role") == "Developer":
+                return 400, {"status": "error",
+                             "detail": "The Developer account is managed separately "
+                                       "and cannot be changed here."}
             if p["role"] not in ROLES or p["role"] == "Owner":
                 return 400, {"status": "error", "detail": "Unknown role."}
             u["role"] = p["role"]
@@ -225,6 +233,10 @@ def handle_set_active(body: bytes) -> Tuple[int, Dict[str, Any]]:
         if u.get("role") == "Owner" and not active:
             return 400, {"status": "error",
                          "detail": "The Owner account cannot be disabled."}
+        if u.get("role") == "Developer" and not active:
+            return 400, {"status": "error",
+                         "detail": "The Developer account is managed separately "
+                                   "and cannot be disabled here."}
         u["active"] = active
         _save(data)
     verb = "enabled" if active else "disabled"
@@ -262,6 +274,10 @@ def handle_delete(body: bytes) -> Tuple[int, Dict[str, Any]]:
         if u.get("role") == "Owner":
             return 400, {"status": "error",
                          "detail": "The Owner account cannot be deleted."}
+        if u.get("role") == "Developer":
+            return 400, {"status": "error",
+                         "detail": "The Developer account is managed separately "
+                                   "and cannot be deleted here."}
         data["users"] = [x for x in data["users"] if x is not u]
         _save(data)
     return 200, {"status": "ok", "message": "User deleted."}

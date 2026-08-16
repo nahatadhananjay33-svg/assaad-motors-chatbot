@@ -91,6 +91,7 @@
     // and Social Media Staff have media perms but NO inventory.view, so they must
     // NOT land on the inventory dashboard (they can't view it). See permissions.py.
     if (role === "Owner") return "owner_panel.html";
+    if (role === "Developer") return "developer_dashboard.html";
     if (role === "Video Staff" || role === "Social Media Staff") return "media_admin.html";
     return "inventory_admin.html";
   }

@@ -42,6 +42,11 @@ ALL = "*"
 
 ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     "Owner": {ALL},
+    # Developer Dashboard role: NO business permissions. A Developer session is
+    # confined to the read-only /developer surface (see developer_auth.py) and is
+    # intentionally rejected by every /admin/* endpoint below (unmapped/needed
+    # perms are absent from this empty set).
+    "Developer": set(),
     "Inventory Staff": {"inventory.view", "inventory.edit", "inventory.refresh"},
     "Photo Staff": {"inventory.view", "media.view", "media.photos"},
     "Video Staff": {"media.view", "media.videos"},

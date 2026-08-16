@@ -36,9 +36,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import user_management
+import config
 
 # Storage lives next to the other data stores. Overridable for tests.
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+# Uses config.DATA_DIR so it follows CHAT_DATA_DIR — in Docker that is the
+# mounted /data volume, so the audit trail survives container rebuilds/redeploys
+# (locally this resolves to the same <module>/data path as before).
+DATA_DIR = config.DATA_DIR
 DB_PATH = os.path.join(DATA_DIR, "audit.db")
 
 # Filter buckets shown in the Owner Panel.

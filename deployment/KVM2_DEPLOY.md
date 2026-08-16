@@ -80,6 +80,14 @@ cp Assad_Motors_CORRECTED_12-8-26.xlsx data/IVR_Sheet.xlsx
 Panel login page will be: `http://YOUR_SERVER_IP/inventory_system/login.html`
 Customer chatbot: `http://YOUR_SERVER_IP/`
 
+> **Developer Dashboard (read-only monitoring):** the `*.html` copy above already
+> includes `developer_dashboard.html`. To enable the developer login, set BOTH
+> `DEV_DASHBOARD_USER` and `DEV_DASHBOARD_PASSWORD` in `.env` (env-required — if
+> unset, there is no developer account and the dashboard cannot be entered).
+> After launch it is reachable at `http://YOUR_SERVER_IP/developer` (or the
+> pretty URL `https://yourdomain.com/developer` in Phase 2). Only the Developer
+> account can open it; staff, and even the Owner, are rejected.
+
 ---
 
 ## 5. Phase 1 — launch on HTTP and verify

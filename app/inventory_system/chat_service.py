@@ -99,7 +99,10 @@ def _build_logger() -> logging.Logger:
         # Phase 11: also persist the JSON event stream to disk so activity
         # survives console restarts (rotate via logrotate on the VPS).
         try:
-            _log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+            # config.DATA_DIR follows CHAT_DATA_DIR — in Docker this is the
+            # mounted /data volume, so access.log persists across redeploys
+            # (locally it resolves to the same <module>/data path as before).
+            _log_dir = config.DATA_DIR
             os.makedirs(_log_dir, exist_ok=True)
             fh = logging.FileHandler(os.path.join(_log_dir, "access.log"),
                                      encoding="utf-8", delay=True)

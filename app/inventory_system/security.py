@@ -151,10 +151,14 @@ class SecurityGate:
 
         if path_n in ("/", "/health") or path_n.startswith("/auth"):
             pass                                   # health + login are public
-        elif path_n.startswith("/admin"):
+        elif path_n.startswith("/admin") or path_n.startswith("/developer"):
             # Phase 10D: a valid session authorizes admin (per-user identity is
             # stronger than a shared key). Fall back to the legacy admin-key
             # gate — which still FAILS CLOSED — when there is no session.
+            # The Developer Dashboard (/developer/*) rides the SAME fail-closed
+            # edge so it is never public even when /chat auth is opt-in; the
+            # per-endpoint Developer-role check (developer_auth) is the second,
+            # authoritative layer inside route().
             if session_user:
                 pass
             elif not self.admin_keys:
