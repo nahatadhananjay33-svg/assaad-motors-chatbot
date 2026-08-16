@@ -68,9 +68,21 @@ Fill in: `CHAT_ADMIN_API_KEYS`, `CHAT_API_KEYS`, the **Supabase** vars, and `ALL
 nginx serves the pages; the app reads the Excel from the writable `data/` volume.
 ```bash
 # static pages nginx will serve (customer chatbot + panel)
+# Copy the JS/CSS too — not just the HTML. index.html loads style.css/app.js/
+# config.js, and EVERY panel page loads auth_guard.js (it provides AUTH.base, so
+# without it the panel dies with "Connect first" and no inventory ever loads).
 mkdir -p deployment/web/inventory_system
 cp app/chat_app/index.html            deployment/web/index.html
+cp app/chat_app/app.js                deployment/web/
+cp app/chat_app/style.css             deployment/web/
+cp app/chat_app/config.js             deployment/web/
 cp app/inventory_system/*.html        deployment/web/inventory_system/
+cp app/inventory_system/auth_guard.js deployment/web/inventory_system/
+
+# Point the chat page at the SAME ORIGIN. The shipped default is the dev value
+# (host:8000), which cannot work in production: 8000 is firewalled and plain HTTP.
+# nginx proxies /chat, so an empty apiUrl is correct.
+sed -i 's#^  apiUrl:.*#  apiUrl: ""   // same origin — nginx proxies /chat#' deployment/web/config.js
 
 # seed the inventory workbook into the writable data dir
 mkdir -p data
