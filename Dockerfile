@@ -18,6 +18,12 @@ RUN pip install --no-cache-dir -r inventory_system/requirements.txt
 
 # 2) application code + inventory workbook
 COPY app/inventory_system/ ./inventory_system/
+# media_sync is NOT optional: inventory_edit / media_admin / owner_panel /
+# user_management each add ../media_sync to sys.path at import time and pull
+# FileLock + atomic_save_workbook from it. Without this the app dies at startup
+# with "No module named '_util'". It must land at /app/media_sync so that the
+# "<inventory_system>/../media_sync" path they compute resolves.
+COPY app/media_sync/ ./media_sync/
 COPY app/IVR_Sheet.xlsx ./IVR_Sheet.xlsx
 
 # 3) non-root user + writable data dir (mounted as a volume in prod)
