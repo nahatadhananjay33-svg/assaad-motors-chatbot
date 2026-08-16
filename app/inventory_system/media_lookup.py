@@ -98,7 +98,15 @@ def detect_photo_scope(message: str) -> str:
 
 
 def _identifies_vehicle(q: Query) -> bool:
-    return bool(q.model or q.make or q.category or q.seats is not None)
+    # reg_partial counts: "6687 ki photos bhejo" names a car by its last digits
+    # just as surely as naming the model. Without it the media path answered
+    # "Kaunsi gaadi ke photos chahiye?" while the inventory path had already
+    # resolved the very same car and rendered its card — a self-contradicting
+    # reply. The partial is matched by retrieval_engine._matches, which requires
+    # the digits to be the plate's COMPLETE trailing group, so this never
+    # loosens into a wrong-car answer.
+    return bool(q.model or q.make or q.category or q.seats is not None
+                or q.reg_partial)
 
 
 def _extract_registration(message: str) -> Optional[str]:

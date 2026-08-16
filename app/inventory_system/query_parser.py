@@ -563,6 +563,14 @@ def normalize_price_vocab(text: str) -> str:
     return _PRICE_FAMILY_RE.sub(" price ", text or "")
 
 
+# Attribute words that mark a preceding bare "k" as the Hinglish possessive
+# ("6944 k price" = "6944 ka price") rather than a thousands multiplier.
+_K_ATTR_AFTER = re.compile(
+    r"(?:price|daam|rate|km|kilo|photo|video|pic|tasveer|model|year|saal|fuel|"
+    r"colou?r|rang|owner|malik|mileage|average|engine|seat|detail|insurance|"
+    r"condition|status)")
+
+
 def normalize_typos(text: str) -> str:
     out = text or ""
     for pat, repl in _TYPO_MAP.items():
@@ -1356,7 +1364,16 @@ def _parse_price(text: str, q: Query) -> None:
 
     # "X thousand" / "Xk" budget (entry-level)
     if q.price_max is None and q.price_min is None:
-        for m in re.finditer(r"(\d+)\s*(?:thousand|k)\b", text):
+        for m in re.finditer(r"(\d+)(\s*)(thousand|k)\b", text):
+            # A SPACED bare "k" is almost always the Hinglish possessive typed
+            # short: "6944 k price" means "6944 ka price" — that car's price —
+            # NOT a ₹69.44 lakh budget. Reading it as a budget threw away the
+            # plate lookup and dumped a generic browse. Only treat a spaced "k"
+            # as a thousands multiplier when it is not introducing an attribute
+            # question; the attached form ("500k") stays unambiguous.
+            if (m.group(3) == "k" and m.group(2)
+                    and _K_ATTR_AFTER.match(text[m.end():].lstrip())):
+                continue
             value = int(m.group(1)) * 1000
             if 50_000 <= value <= 20_000_000:   # sanity: 50k to 2Cr
                 q.price_max = value
