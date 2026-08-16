@@ -10,8 +10,11 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 
 # 1) dependencies first (better layer caching)
+# NOTE: the path is relative to WORKDIR (/app) — the COPY above already strips the
+# leading "app/", so the file lands at /app/inventory_system/requirements.txt.
+# Installing from "app/inventory_system/..." would look for /app/app/... and fail.
 COPY app/inventory_system/requirements.txt ./inventory_system/requirements.txt
-RUN pip install --no-cache-dir -r app/inventory_system/requirements.txt
+RUN pip install --no-cache-dir -r inventory_system/requirements.txt
 
 # 2) application code + inventory workbook
 COPY app/inventory_system/ ./inventory_system/
