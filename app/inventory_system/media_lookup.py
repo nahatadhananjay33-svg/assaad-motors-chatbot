@@ -33,6 +33,7 @@ PHOTO_REQUEST = "photo_request"
 VIDEO_REQUEST = "video_request"
 INSTAGRAM_REQUEST = "instagram_request"
 YOUTUBE_REQUEST = "youtube_request"
+LINK_REQUEST = "link_request"          # bare "link bhejo" -> Instagram + YouTube both
 
 # ── photo scope ──
 SCOPE_ALL = "all"
@@ -58,6 +59,11 @@ _PHOTO_WORDS = ["photo", "photos", "image", "images", "pic", "pics", "picture",
                 "image bhejo", "snaps",
                 # Phase 7H.2 + Marathi ("foto"/"fotoo"/"piks"/"tsveer" normalized)
                 "फोटो", "फोटू", "चित्र", "चित्रे", "पिक्स", "तस्वीर"]
+# Bare "link" (no platform word) -> send BOTH Instagram and YouTube. Checked LAST,
+# so "youtube link" -> YouTube and "instagram link"/"reel link" -> Instagram still
+# win via their own tables above.
+_LINK_WORDS = ["link", "links", "link bhejo", "link do", "social media",
+               "social link", "लिंक", "लिंक भेजो"]
 
 _INTERIOR_WORDS = ["interior", "inside", "andar", "andar ki", "cabin", "seats photo",
                    "ander", "ander ka", "आतले", "आतला", "आतील"]
@@ -85,6 +91,8 @@ def detect_media_intent(message: str) -> Optional[str]:
         return VIDEO_REQUEST
     if any(_has(text, _norm(w)) for w in _PHOTO_WORDS):
         return PHOTO_REQUEST
+    if any(_has(text, _norm(w)) for w in _LINK_WORDS):
+        return LINK_REQUEST
     return None
 
 

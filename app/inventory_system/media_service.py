@@ -199,4 +199,8 @@ class MediaService:
         if mq.intent == ml.YOUTUBE_REQUEST:
             resp["youtube"] = list(assets.youtube)
             return resp["youtube"]
+        if mq.intent == ml.LINK_REQUEST:          # bare "link" -> both platforms
+            resp["instagram"] = list(assets.instagram)
+            resp["youtube"] = list(assets.youtube)
+            return resp["instagram"] + resp["youtube"]
         return []

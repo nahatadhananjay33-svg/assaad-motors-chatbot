@@ -164,7 +164,10 @@ class InventoryItem:
     # ── advisory / derived ──
     insurance_hint: Optional[str] = None     # advisory only; never asserted
     body_type: str = BodyType.UNKNOWN
-    seats: Optional[int] = None
+    seats: Optional[int] = None              # from the "Seats" Excel column ONLY
+    # from the "Luxury" Excel column ONLY (YES -> True, NO/blank -> False). The
+    # Excel is the sole source of the luxury classification — no brand inference.
+    is_luxury: bool = False
 
     # ── pricing extensions (Phase 7D) ──
     price_range_low: Optional[int] = None

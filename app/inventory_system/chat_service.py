@@ -218,6 +218,7 @@ _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _MEDIA_INTENT_WORD = {
     "photo_request": "photo", "video_request": "video",
     "instagram_request": "instagram", "youtube_request": "youtube",
+    "link_request": "link",
 }
 
 # ── Phase 7O.3: crisp media replies (no LLM) ──────────────────────────────────
@@ -232,15 +233,17 @@ MEDIA_CRISP_REPLIES = True
 _MEDIA_OK_RESP = {
     "photo_request":     "{v} ke photos available hain.",
     "video_request":     "{v} ka video available hai.",
-    "instagram_request": "{v} ke Instagram par photos/reels available hain.",
-    "youtube_request":   "{v} ka YouTube video available hai.",
+    "instagram_request": "{v} ka Instagram link:",
+    "youtube_request":   "{v} ka YouTube link:",
+    "link_request":      "{v} ke links:",
 }
 # Identified single vehicle, but no asset on file — answer crisply, don't re-ask.
 _MEDIA_UNAVAIL_RESP = {
     "photo_request":     "{v} ke photos abhi available nahi — visit pe dikha denge.",
     "video_request":     "{v} ka video abhi available nahi — visit pe dikha denge.",
-    "instagram_request": "{v} ke Instagram photos/reels abhi available nahi — visit pe dikha denge.",
-    "youtube_request":   "{v} ka YouTube video abhi available nahi — visit pe dikha denge.",
+    "instagram_request": "{v} ka Instagram link abhi available nahi — visit pe dikha denge.",
+    "youtube_request":   "{v} ka YouTube link abhi available nahi — visit pe dikha denge.",
+    "link_request":      "{v} ke Instagram/YouTube links abhi available nahi — visit pe dikha denge.",
 }
 # No vehicle in context (or unresolvable) — crisp, media-aware clarification.
 _MEDIA_CLARIFY_RESP = {
@@ -253,7 +256,11 @@ _MEDIA_CLARIFY_RESP = {
                           "number ya model bata do — ya jis reel ki baat kar rahe "
                           "ho uska link bhej do, main pehchan leta hoon."),
     "youtube_request":   "Kaunsi gaadi ka YouTube video chahiye?",
+    "link_request":      "Kaunsi gaadi ke links chahiye? Number ya model bata do.",
 }
+# media intents whose actual URLs should be appended to the reply text (so a
+# "link bhejo" delivers the link immediately, not just a "available hai" line).
+_LINK_INTENTS = {"instagram_request", "youtube_request", "link_request"}
 
 # ── Reel / Instagram DISCOVERY flow ───────────────────────────────────────────
 # The dealership has a large Instagram following, so most customers reference a
@@ -292,7 +299,30 @@ def _is_reel_source_query(message: str) -> bool:
         return False
     if any(w in t for w in _MEDIA_ASSET_WORDS):
         return False
+    # Reel-DISCOVERY (customer saw the car in a reel and asks about it) fires on:
+    #   * an explicit reel/story marker ("reel wali", "insta pe dekhi", …), or
+    #   * a pasted instagram/social URL, or
+    #   * a bare platform mention with NO car named (ask which car).
+    if any(mk in t for mk in _REEL_DISCOVERY_MARKERS):
+        return True
+    if ("instagram.com" in t or "instagr" in t and "/" in t
+            or "/reel/" in t or "/p/" in t):
+        return True
+    # Part 12: a NAMED car + bare "instagram" / "instagram link" (no reel marker,
+    # no URL) is a request to SEND that car's Instagram link, not discovery.
+    _q = parse(message)
+    if _q.registration or _q.reg_partial or _q.model or _q.make:
+        return False
     return True
+
+
+# Reel/story DISCOVERY markers — the customer references seeing the car in a reel
+# (identify + ask availability), as opposed to asking us to send the IG link.
+_REEL_DISCOVERY_MARKERS = (
+    "reel", "रील", "insta pe", "insta pr", "instagram pe", "instagram wali",
+    "insta wali", "instagram wale", "dekhi thi", "dekha tha", "dekhe the",
+    "story", "स्टोरी", "in the reel", "me thi", "mein thi", "me dekhi",
+)
 
 _CATALOGUE_PHRASES = {
     "catalogue", "catalog", "full catalogue", "show inventory", "all cars",
@@ -532,6 +562,28 @@ _EXPLICIT_BROWSE_CUES = (
 
 def _has_browse_cue(message: str) -> bool:
     return any(c in f" {(message or '').strip().lower()} " for c in _EXPLICIT_BROWSE_CUES)
+
+
+# ── Part G: a bare "cars dikhao" must GUIDE, not dump the whole catalogue. Only
+#    an EXPLICIT "show me all cars" opens the full book (price-ascending, capped). ─
+_ALL_CARS_CUES = (
+    "all cars", "all the cars", "show all", "show me all", "saari gaadi",
+    "saari car", "sari gaadi", "sari car", "saare cars", "sabhi gaadi",
+    "sabhi car", "sabhi cars", "sab gaadi", "sab car", "poori list", "puri list",
+    "complete list", "full list", "whole inventory", "full inventory",
+    "entire inventory", "poora stock", "pura stock", "sari cars",
+    "सारी गाड़ी", "सभी गाड़ी", "सभी गाड़ियां", "पूरी लिस्ट", "सारी गाड़ियां",
+)
+
+
+def _wants_all_cars(message: str) -> bool:
+    t = f" {(message or '').strip().lower()} "
+    return any(c in t for c in _ALL_CARS_CUES)
+
+
+_BROWSE_GUIDE = ("Zaroor! Aap kis type ki gaadi dhoond rahe hain — budget, fuel "
+                 "(petrol / diesel / CNG), automatic ya manual, SUV, 7-seater, "
+                 "ya koi khaas model? Bata dijiye, main turant dikha deta hoon.")
 
 
 # Issue C — a standalone attribute refinement carries a filter but no model/reg.
@@ -1012,6 +1064,13 @@ class ChatService:
                     out.response = _MEDIA_OK_RESP.get(
                         _media_intent, "{v} ke photos/video available hain."
                     ).format(v=veh)
+                    # Deliver the actual link(s) inline for a link/IG/YT ask —
+                    # the customer asked for a link, so give it, short and direct.
+                    if _media_intent in _LINK_INTENTS:
+                        _urls = (list(_media_data.get("instagram") or [])
+                                 + list(_media_data.get("youtube") or []))
+                        if _urls:
+                            out.response = out.response + " " + " ".join(_urls)
                 elif MEDIA_CRISP_REPLIES and _ms == STATUS_MEDIA_UNAVAILABLE:
                     out.response = _MEDIA_UNAVAIL_RESP.get(
                         _media_intent, "{v} ka media abhi available nahi."
@@ -1167,6 +1226,19 @@ class ChatService:
                 count=0, filters={}, guardrails=["G-ATTR-CLARIFY"], request_id=rid,
                 meta={"inventory_count": self.inventory_count, "returned": 0,
                       "route": "clarify"})
+        # ── Part G: browse guard. A query with NO real criteria (no model, make,
+        #    registration, filter, or sort) must not dump the catalogue. Guide the
+        #    customer instead — UNLESS they explicitly asked to see everything, in
+        #    which case we fall through and show the whole book (price-ascending,
+        #    capped downstream). ──
+        if (not q.has_any_filter() and not _wants_all_cars(q.raw)
+                and not detect_media_intent(q.raw)):
+            return ChatResult(
+                intent="clarify", response=_BROWSE_GUIDE, vehicles=[],
+                status="clarify", count=0, filters={},
+                guardrails=["G-BROWSE-GUIDE"], request_id=rid,
+                meta={"inventory_count": self.inventory_count, "returned": 0,
+                      "route": "clarify", "browse_guide": True})
         result = self.engine.search(q)
         formatted: FormattedResponse = format_response(result)
         intent = classify_intent(q, result)

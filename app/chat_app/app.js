@@ -180,10 +180,99 @@
           chips.appendChild(c);
         });
       card.appendChild(chips);
+      // ── click a card -> open that EXACT vehicle's detail (by registration) ──
+      if (v.registration_no) {
+        card.classList.add("clickable");
+        card.setAttribute("role", "button");
+        card.setAttribute("tabindex", "0");
+        card.setAttribute("aria-label", "View details for " + v.registration_no);
+        (function (reg) {
+          card.addEventListener("click", function () { openVehicleDetail(reg); });
+          card.addEventListener("keydown", function (e) {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openVehicleDetail(reg); }
+          });
+        })(v.registration_no);
+      }
       wrap.appendChild(card);
     });
     conversation.appendChild(wrap); scrollDown();
   }
+
+  /* ── Vehicle detail overlay (card click). Fetches the CURRENT record by
+     registration from GET /vehicle?reg=; the results underneath are untouched,
+     so Back simply closes the overlay and returns to the same list. ── */
+  function vdEsc(s) { var d = document.createElement("div"); d.textContent = (s == null ? "" : String(s)); return d.innerHTML; }
+  function vdSection(title, rows) {
+    if (!rows || !rows.length) return "";
+    var h = '<div class="vd-sec-title">' + vdEsc(title) + '</div><div class="vd-grid">';
+    rows.forEach(function (r) {
+      h += '<div class="vd-row"><span class="vd-k">' + vdEsc(r.label) + '</span><span class="vd-v">' + vdEsc(r.value) + '</span></div>';
+    });
+    return h + '</div>';
+  }
+  function closeVehicleDetail() {
+    var ov = $("vdetail"); if (ov) { ov.classList.remove("open"); document.body.classList.remove("vd-lock"); }
+  }
+  function openVehicleDetail(reg) {
+    if (!reg) return;
+    var ov = $("vdetail");
+    if (!ov) { ov = document.createElement("div"); ov.id = "vdetail"; ov.className = "vd-overlay"; document.body.appendChild(ov); }
+    ov.innerHTML = '<div class="vd-panel"><div class="vd-msg">Loading…</div></div>';
+    ov.classList.add("open"); document.body.classList.add("vd-lock");
+    ov.onclick = function (e) { if (e.target === ov) closeVehicleDetail(); };
+    fetch(API + "/vehicle?reg=" + encodeURIComponent(reg))
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) { renderVehicleDetail(ov, res); })
+      .catch(function () {
+        ov.querySelector(".vd-panel").innerHTML =
+          '<button class="vd-back" type="button">← Back</button>' +
+          '<div class="vd-msg">Details abhi load nahi ho paaye. Dobara koshish karein.</div>';
+        var b = ov.querySelector(".vd-back"); if (b) b.onclick = closeVehicleDetail;
+      });
+  }
+  function renderVehicleDetail(ov, res) {
+    var d = res.d || {}, panel = ov.querySelector(".vd-panel");
+    var back = '<button class="vd-back" type="button">← Back</button>';
+    if (!res.ok || d.status !== "ok") {
+      panel.innerHTML = back + '<div class="vd-msg">' + vdEsc(d.message || "This vehicle is no longer available.") + '</div>';
+      var b0 = ov.querySelector(".vd-back"); if (b0) b0.onclick = closeVehicleDetail; return;
+    }
+    var h = back + '<div class="vd-head"><div class="vd-title">' + vdEsc(d.title || d.model) + '</div>';
+    if (d.registration_no) h += '<div class="vd-reg">' + vdEsc(d.registration_no) + '</div>';
+    var sub = [d.make, d.variant].filter(Boolean).join(" • ");
+    if (sub) h += '<div class="vd-sub">' + vdEsc(sub) + '</div>';
+    h += '</div><div class="vd-primary">';
+    (d.primary || []).forEach(function (r) {
+      h += '<div class="vd-p"><span class="vd-pk">' + vdEsc(r.label) + '</span><span class="vd-pv">' + vdEsc(r.value) + '</span></div>';
+    });
+    h += '</div>';
+    h += vdSection("Details", d.details);
+    h += vdSection("Specifications", d.specs);
+    var m = d.media || {};
+    var photos = (m.photos || []).filter(isHttp), videos = (m.videos || []).filter(isHttp);
+    if (photos.length) {
+      h += '<div class="vd-sec-title">Photos</div><div class="vd-photos">';
+      photos.forEach(function (u) { h += '<a href="' + vdEsc(u) + '" target="_blank" rel="noopener"><img loading="lazy" src="' + vdEsc(u) + '" alt="vehicle photo"></a>'; });
+      h += '</div>';
+    }
+    if (videos.length) {
+      h += '<div class="vd-sec-title">Videos</div><div class="vd-videos">';
+      videos.forEach(function (u) { h += '<video controls preload="none" src="' + vdEsc(u) + '"></video>'; });
+      h += '</div>';
+    }
+    var lk = d.links || {};
+    var ig = lk.instagram || CFG.instagram, yt = lk.youtube || CFG.youtube;
+    if (ig || yt) {
+      h += '<div class="vd-links">';
+      if (ig) h += '<a class="vd-link ig" target="_blank" rel="noopener" href="' + vdEsc(ig) + '">Instagram' + (!lk.instagram ? ' (Dealership)' : '') + '</a>';
+      if (yt) h += '<a class="vd-link yt" target="_blank" rel="noopener" href="' + vdEsc(yt) + '">YouTube' + (!lk.youtube ? ' (Dealership)' : '') + '</a>';
+      h += '</div>';
+    }
+    panel.innerHTML = h;
+    var b = ov.querySelector(".vd-back"); if (b) b.onclick = closeVehicleDetail;
+    panel.scrollTop = 0;
+  }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeVehicleDetail(); });
   function isHttp(u) { return typeof u === "string" && /^https?:\/\//i.test(u); }
   function addMedia(media) {
     if (!media) return;

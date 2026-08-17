@@ -401,6 +401,8 @@ _EXT_HEADER_MAP: Dict[str, str] = {
 #    model_specs auto-fill; if the column/value is absent, model_specs fills the
 #    STANDARD specs and dealership-only fields stay None ("Data not available").
 _NEW_EXT_FIELDS = [
+    # customer-facing, Excel-authoritative (no code inference for these)
+    ("seats", "Seats", "int"),
     # standard specs (overridable)
     ("engine_cc", "Engine CC", "int"), ("power_bhp", "Power BHP", "float"),
     ("torque_nm", "Torque NM", "float"), ("aspiration", "Aspiration", "text"),
@@ -496,6 +498,21 @@ def parse_yn(raw: Any) -> Optional[bool]:
     if s == "N":
         return False
     return None
+
+
+# "Luxury" column. Business rule (owner-defined): YES = luxury; NO or blank = not
+# luxury. This is the ONLY source of the luxury flag — no brand inference anywhere.
+_LUXURY_YES = {"YES", "Y", "TRUE", "1", "LUXURY"}
+
+
+def parse_luxury(raw: Any) -> bool:
+    return _clean(raw).upper() in _LUXURY_YES
+
+
+# Register the Luxury header so _load_ext_col_map() locates the column; the value
+# is read + parsed explicitly in the row builder (blank must mean False, not None,
+# which the generic ext-field loop cannot express).
+_EXT_HEADER_MAP["Luxury"] = "is_luxury"
 
 
 def parse_enum_field(raw: Any, valid: set) -> Optional[str]:
@@ -665,7 +682,11 @@ def build_item(row: Tuple, *, source_sheet: str, as_of: str,
         price_quotable=quotable,
         insurance_hint=normalize_insurance(_cell(row, "insurance")),
         body_type=_body_type_for(model),
-        seats=_seats_for(model),
+        # Seats come ONLY from the "Seats" Excel column (read via the ext-field
+        # loop below). No inference from body type / model — a blank cell means
+        # "unknown", so a seat filter simply does not match it. (Seed the column
+        # once; staff maintain it thereafter.)
+        seats=None,
         location_code=loc_code,
         location_type=loc_type,
         customer_viewable=viewable,
@@ -722,6 +743,8 @@ def build_item(row: Tuple, *, source_sheet: str, as_of: str,
         _v = _new_parsers[_k](_xcell(_f))
         if _v is not None:
             setattr(item, _f, _v)
+    # ── Luxury: read the "Luxury" column explicitly (blank == NO, not None) ──
+    item.is_luxury = parse_luxury(_xcell("is_luxury"))
     # ── auto-fill STANDARD factory specs from the model_specs library where the
     #    dealership has not entered a value. Owner data always wins; unknown
     #    models are left untouched (no fabrication). Fully guarded. ──

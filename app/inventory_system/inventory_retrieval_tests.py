@@ -127,12 +127,15 @@ class TestAvailability(RetrievalTestBase):
         self.assertTrue(r.found)
         self.assertTrue(all(m.model == "Creta" for m in r.matches))
 
-    def test_swift_not_in_stock_offers_segment(self):
-        """No Swift exists -> correct result is a hatchback alternative, never a fake Swift."""
+    def test_swift_not_in_stock_no_substitution(self):
+        """No Swift exists -> EXACTLY zero matches. The silent body-type
+        substitution (G-SEGMENT) has been removed: never a fabricated Swift and
+        never another hatchback quietly returned as if it matched. chat_service
+        says 'not available' and may OFFER a clearly-labelled alternative."""
         r = self.engine.search(parse("Swift available hai?"))
-        self.assertFalse(any(m.model == "Swift" for m in r.matches))  # never fabricated
-        self.assertTrue(r.alternative_segment)
-        self.assertTrue(all(m.body_type == BodyType.HATCHBACK for m in r.matches))
+        self.assertEqual(r.count, 0)
+        self.assertFalse(r.alternative_segment)
+        self.assertFalse(any(m.model == "Swift" for m in r.matches))
 
     def test_named_model_searches_full_catalogue(self):
         # a sub-2L named model still resolves (G-SOURCE-FALLBACK), not filtered out
@@ -267,12 +270,13 @@ class TestCombination(RetrievalTestBase):
         # every match already verified above as a diesel SUV within budget
         # (which cars qualify is data-driven, so no per-model exclusion here)
 
-    def test_white_automatic_honda_relaxes_not_fabricates(self):
-        # no white automatic Honda exists -> engine relaxes & announces, no fake row
+    def test_white_automatic_honda_exact_no_relax(self):
+        # No white automatic Honda exists -> EXACTLY zero. Silent relaxation
+        # (G-RELAX) has been removed: colour/transmission are never quietly
+        # dropped, and no fabricated row is returned. Honest zero.
         r = self.engine.search(parse("white automatic Honda"))
-        self.assertTrue(r.found)
-        self.assertTrue(all(m.make == "HOND" for m in r.matches))   # hard filter kept
-        self.assertTrue(len(r.relaxed) > 0)                          # something relaxed
+        self.assertEqual(r.count, 0)
+        self.assertEqual(r.relaxed, [])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -363,12 +367,11 @@ class TestSafety(RetrievalTestBase):
 class TestPrimaryTarget(RetrievalTestBase):
     def test_swift_available_hai(self):
         a = answer(self.engine, "Swift available hai?")
-        # correct, guardrail-safe result: no fabricated Swift, hatchback alternative,
-        # visit pivot present, no internal leak
-        self.assertEqual(a.status, "segment")
+        # No Swift in stock -> honest 'not available', no fabricated Swift, no
+        # silent substitution, no internal leak. (G-SEGMENT removed.)
+        self.assertEqual(a.status, "not_found")
         self.assertFalse(a.contains_forbidden)
-        self.assertTrue(a.visit_pivot)
-        self.assertIn(PUBLIC_LOCATION, a.spoken)
+        self.assertEqual(a.shown, [])
         self.assertNotIn("Swift", [v["model"] for v in a.shown])
 
 

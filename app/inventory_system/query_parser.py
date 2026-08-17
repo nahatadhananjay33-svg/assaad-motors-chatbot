@@ -484,6 +484,12 @@ _REGISTRATION_RE = re.compile(r"\b[A-Za-z]{2}\s?\d{1,2}\s?[A-Za-z]{1,2}\s?\d{3,4
 
 # bare 4-digit model year, e.g. "2019 nexon photos"
 _YEAR_EXACT_RE = re.compile(r"\b(19[5-9]\d|20[0-3]\d)\b")
+# "<year> se upar / ke baad / above / newer / onwards / aur nayi" -> year floor.
+_YEAR_FLOOR_RE = re.compile(
+    r"\s*(se\s*upar|se\s*uper|ke\s*baad|ke\s*bad|se\s*naye?i?|se\s*nayi|"
+    r"aur\s*naye?i?|se\s*zyada|onwards?|and\s*newer|and\s*above|se\s*aage|"
+    r"ya\s*usse\s*nayi|se\s*upar\s*wali)")
+_YEAR_FLOOR_BEFORE_RE = re.compile(r"(above|after|newer\s*than|since|baad\s*ki)\s*$")
 
 
 def extract_registration(message: str) -> Optional[str]:
@@ -1015,14 +1021,18 @@ def parse(utterance: str) -> Query:
         q.category = "Hatchback"; q.intents.add("category")
     elif any(_has(text, w) for w in (
             "family car", "family wali", "muv", "mpv",
-            "7 seater", "8 seater", "family", "for family", "wife and kids",
+            "family", "for family", "wife and kids",
             "spacious", "family trips", "family use", "biwi bachon", "biwi bacho",
             "biwi aur bach", "ghar mein", "log hain ghar", "log ke liye",
             "bacha hai", "bachon ke liye", "daily use",
             # Marathi
             "फॅमिली", "कुटुंब", "कुटुंबासाठी", "जण आहोत", "बायको मुलांसाठी",
-            "आरामदायक", "मोठी गाडी", "रोज वापरासाठी", "जणांसाठी", "सीटर",
+            "आरामदायक", "मोठी गाडी", "रोज वापरासाठी", "जणांसाठी",
             "biwi ke liye")):
+        # NOTE: "7 seater" / "8 seater" / "सीटर" removed from the MUV cues. A seat
+        # count is a Seats-column filter ONLY (q.seats above) — "7 seater cars"
+        # must mean Seats == 7 and must NOT also force body_type == MUV, which
+        # would wrongly exclude 7-seat SUVs (Fortuner, XUV500, Safari).
         q.category = "MUV"; q.intents.add("category")
     elif any(_has(text, w) for w in ("luxury", "premium car", "premium gaadi")):
         q.category = "Luxury"; q.intents.add("category")
@@ -1062,7 +1072,17 @@ def parse(utterance: str) -> Query:
         # ("1994 number wali gaadi"), in which case they are a registration tail,
         # not a model year — see _plate_cue_adjacent.
         if m and not _plate_cue_adjacent(text[:m.start()], text[m.end():]):
-            q.year_exact = int(m.group(0))
+            yr = int(m.group(0))
+            # "2018 se upar / ke baad / above / newer" is a year FLOOR (>= 2018),
+            # not that exact year. The cue can sit AFTER the year ("2018 se upar")
+            # or BEFORE it ("above 2018").
+            after = text[m.end():m.end() + 18]
+            before = text[max(0, m.start() - 14):m.start()]
+            if _YEAR_FLOOR_RE.match(after) or _YEAR_FLOOR_BEFORE_RE.search(before):
+                q.year_min = yr
+                q.intents.add("category")
+            else:
+                q.year_exact = yr
 
     # ── intents: availability ──
     _avail_base = [

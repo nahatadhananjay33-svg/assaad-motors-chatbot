@@ -273,9 +273,21 @@ for it in ft_cars[:16]:
         (lambda i=it: mk2(i)), subtype="multi-field")
 
 # 8) FILTERS / recommendations (fuel/transmission/color/body) — verify shown cards satisfy
-def filter_check(pred_desc, fuel=None, trans=None, color=None):
+# NOTE: silent relaxation is REMOVED, so a filter combo that genuinely has no match
+# in the Excel (e.g. a manual EV when every EV is automatic) must honestly return
+# not_found. The check therefore asserts against the ACTUAL Excel truth for the
+# combo: >0 in Excel -> chatbot must return >0; 0 in Excel -> not_found is correct.
+def _fuel_match(item_fuel, want):
+    v = lc(item_fuel)
+    if want.lower() in ("cng", "lpg"):
+        return want.lower() in {p.strip() for p in v.replace("/", "+").split("+")}
+    return v == want.lower()
+def filter_check(pred_desc, fuel=None, trans=None, color=None, truth=None):
     def f(r):
         cnt=getattr(r,"count",0) or 0; st=getattr(r,"status","")
+        if truth == 0:                                   # impossible combo -> honest zero
+            ok = (cnt == 0) or st in ("not_found", "unknown")
+            return ok, f"expected 0 (excel), got {cnt}/{st}"
         if cnt>0 and st not in ("not_found","unknown"): return True, f"count={cnt}"
         if st=="clarify": return True, "clarify-ok"     # asking to narrow an ambiguous filter is fine
         return False, f"no results status={st}"
@@ -283,8 +295,10 @@ def filter_check(pred_desc, fuel=None, trans=None, color=None):
 fuels = [f for f in Counter(i.fuel_norm for i in items if has(i.fuel_norm))]
 for fu in [f for f in fuels if "+" not in f]:           # single fuels only
     for tr in ["automatic","manual"]:
+        _truth = sum(1 for i in items
+                     if _fuel_match(i.fuel_norm, fu) and lc(i.transmission_norm) == tr)
         add("Recommendation", f"{tr} {fu.lower()} cars dikhao", "hinglish", None, "filter", "-", f"{fu}+{tr}",
-            (lambda fu=fu,tr=tr: filter_check(f"{fu}+{tr}", fuel=fu, trans=tr)), subtype="filter")
+            (lambda fu=fu,tr=tr,tv=_truth: filter_check(f"{fu}+{tr}", fuel=fu, trans=tr, truth=tv)), subtype="filter")
 for bt in [b for b in Counter(i.body_type for i in items if has(i.body_type))][:6]:
     add("Recommendation", f"{bt.lower()} cars under 10 lakh batao", "hinglish", None, "filter", "-", bt,
         (lambda: filter_check("body+budget")), subtype="filter")

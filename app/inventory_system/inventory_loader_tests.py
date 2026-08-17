@@ -225,20 +225,25 @@ class TestPlaceholderRows(unittest.TestCase):
 
 
 class TestBodyTypeAndSeats(unittest.TestCase):
-    def test_suv_and_7seater(self):
+    # Body type is still derived from the model (needed for SUV / MUV / Hatchback
+    # category filters). SEATS are NO LONGER inferred — they come only from the
+    # "Seats" Excel column, so a row built without that column has seats == None.
+    # The column-read + seat-filter path is covered end-to-end in
+    # filter_accuracy_tests (7 seater == Seats 7 against the live sheet).
+    def test_suv_body_type_seats_not_inferred(self):
         it = build(make="TOYO", model="FORTUNER", car_numb="MH04EX5958")
         self.assertEqual(it.body_type, BodyType.SUV)
-        self.assertEqual(it.seats, 7)
+        self.assertIsNone(it.seats)          # no inference — column is the source
 
-    def test_muv_7seater(self):
+    def test_muv_body_type_seats_not_inferred(self):
         it = build(make="TOYO", model="INNOVA", car_numb="MH04ET0678")
         self.assertEqual(it.body_type, BodyType.MUV)
-        self.assertEqual(it.seats, 7)
+        self.assertIsNone(it.seats)
 
-    def test_hatchback_5seater(self):
+    def test_hatchback_body_type_seats_not_inferred(self):
         it = build(make="MARU", model="SWIFT", car_numb="MH01PA7577")
         self.assertEqual(it.body_type, BodyType.HATCHBACK)
-        self.assertEqual(it.seats, 5)
+        self.assertIsNone(it.seats)
 
 
 class TestDuplicateVehicles(unittest.TestCase):

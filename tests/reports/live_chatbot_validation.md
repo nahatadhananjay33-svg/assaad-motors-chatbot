@@ -1,8 +1,8 @@
 # Live Chatbot Validation Report
 
-- Inventory: `IVR_Sheet.xlsx`  hash `ef184c2ed78e4cdb4bf0c9ee2308b1cd6d767c5487a85c8163c9035192276600`
+- Inventory: `IVR_Sheet.xlsx`  hash `240dace08a280997ed3be7bfb347cd52bd5c014fa6982e8f46ed5b864b2a359b`
 - Cars: 187  Models: 83  Generated tests: 750
-- Timestamp: 2026-08-16T19:20:39+00:00
+- Timestamp: 2026-08-16T20:41:12+00:00
 
 ## Totals
 

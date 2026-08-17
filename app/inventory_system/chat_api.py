@@ -37,6 +37,7 @@ from instrumented_chat_service import InstrumentedChatService
 import config
 import inventory_upload
 import inventory_edit
+import vehicle_detail
 import media_admin
 import owner_panel
 import user_management
@@ -168,6 +169,17 @@ def route(method: str, path: str, body: bytes, service: ChatService,
     # ── health ──
     if method == "GET" and path in ("/", "/health"):
         return 200, service.health()
+
+    # ── customer vehicle detail (public, read-only): GET /vehicle?reg=<reg> ──
+    # Card click -> exact vehicle by registration -> CURRENT record, customer-safe
+    # fields + that car's media. Sold/removed -> "no longer available". Never
+    # reuses the admin get_car (which returns internal columns).
+    if method == "GET" and path == "/vehicle":
+        try:
+            return vehicle_detail.handle_vehicle_detail(service, query_string)
+        except Exception as e:
+            _log(ACCESS_LOG, logging.ERROR, "vehicle_detail_error", error=str(e))
+            return 500, {"error": "vehicle_detail_failed", "detail": str(e)}
 
     # ── chat ──
     if method == "POST" and path == "/chat":
