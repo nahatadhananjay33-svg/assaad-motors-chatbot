@@ -1242,7 +1242,22 @@ class ChatService:
         result = self.engine.search(q)
         formatted: FormattedResponse = format_response(result)
         intent = classify_intent(q, result)
-        vehicles = [public_vehicle(it) for it in result.matches[:self.top_n]]
+        # A filtered / explicit browse behaves like an Excel filter: EVERY matching
+        # car is returned, never a cheapest-N slice. The old top_n cap silently hid
+        # every car ranked below the cap — e.g. a "manual cars" browse (131 matches)
+        # showed only the 50 cheapest and dropped the ₹6.99L manual Astor and ~80
+        # others. Any category the customer names (manual / automatic / CNG / luxury
+        # / sunroof / 7-seater / colour / price / owner / model …) sets a filter, so
+        # has_any_filter() is True and the full set is shown. A bare no-criteria
+        # browse can only reach here when the customer explicitly asked for all cars
+        # (the browse guard above blocks every other no-filter case), so that too is
+        # shown in full. Pagination still works: _last_search_offset is set to the
+        # full count downstream, so a later "aur" honestly says nothing more remains.
+        if q.has_any_filter() or _wants_all_cars(q.raw):
+            _shown_matches = result.matches
+        else:
+            _shown_matches = result.matches[:self.top_n]
+        vehicles = [public_vehicle(it) for it in _shown_matches]
         # Phase 7P.1: ranked distinct match models (filter-respecting) so the
         # consultative layer can recommend only currently-available cars.
         _seen, match_models = set(), []
