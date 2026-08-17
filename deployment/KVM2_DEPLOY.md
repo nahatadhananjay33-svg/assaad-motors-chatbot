@@ -67,22 +67,12 @@ Fill in: `CHAT_ADMIN_API_KEYS`, `CHAT_API_KEYS`, the **Supabase** vars, and `ALL
 ## 4. Web root + inventory file
 nginx serves the pages; the app reads the Excel from the writable `data/` volume.
 ```bash
-# static pages nginx will serve (customer chatbot + panel)
-# Copy the JS/CSS too — not just the HTML. index.html loads style.css/app.js/
-# config.js, and EVERY panel page loads auth_guard.js (it provides AUTH.base, so
-# without it the panel dies with "Connect first" and no inventory ever loads).
-mkdir -p deployment/web/inventory_system
-cp app/chat_app/index.html            deployment/web/index.html
-cp app/chat_app/app.js                deployment/web/
-cp app/chat_app/style.css             deployment/web/
-cp app/chat_app/config.js             deployment/web/
-cp app/inventory_system/*.html        deployment/web/inventory_system/
-cp app/inventory_system/auth_guard.js deployment/web/inventory_system/
-
-# Point the chat page at the SAME ORIGIN. The shipped default is the dev value
-# (host:8000), which cannot work in production: 8000 is firewalled and plain HTTP.
-# nginx proxies /chat, so an empty apiUrl is correct.
-sed -i 's#^  apiUrl:.*#  apiUrl: ""   // same origin — nginx proxies /chat#' deployment/web/config.js
+# static pages nginx will serve (customer chatbot + panel). This is scripted:
+# deployment/build_web.sh copies index/app.js/style.css/config.js + every panel
+# page + auth_guard.js into deployment/web/ and forces config.js apiUrl="" (same
+# origin — nginx proxies /chat). deployment/web/ is gitignored (a build artifact),
+# so re-run this on every deploy; it never gets committed and git can't wipe it.
+bash deployment/build_web.sh
 
 # seed the inventory workbook into the writable data dir
 mkdir -p data
@@ -103,7 +93,9 @@ Customer chatbot: `http://YOUR_SERVER_IP/`
 ---
 
 ## 5. Phase 1 — launch on HTTP and verify
-`docker-compose.yml` already points nginx at `nginx.http.conf` (HTTP). Start it:
+`docker-compose.yml` now defaults to `nginx.conf` (HTTPS — the live production
+setup). For a first-time HTTP-only bootstrap on a raw IP with no domain/certs,
+temporarily switch that one line to `./deployment/nginx.http.conf`, then start it:
 ```bash
 docker compose up -d --build
 docker compose ps
@@ -125,8 +117,9 @@ certbot certonly --webroot -w /opt/assad/deployment/certbot-webroot \
 cp /etc/letsencrypt/live/yourdomain.com/fullchain.pem deployment/certs/
 cp /etc/letsencrypt/live/yourdomain.com/privkey.pem   deployment/certs/
 ```
-3. Switch nginx to the HTTPS config: in `docker-compose.yml`, change the nginx line
-   `./deployment/nginx.http.conf` → `./deployment/nginx.conf`, and set your domain as `server_name` in `deployment/nginx.conf`.
+3. nginx already uses the HTTPS config by default (`./deployment/nginx.conf` in
+   `docker-compose.yml` — only change this if you switched it to `nginx.http.conf`
+   for the Phase-1 bootstrap). Set your domain as `server_name` in `deployment/nginx.conf`.
 4. In `.env` set `CHAT_ENV=production` and `ALLOWED_ORIGINS=https://yourdomain.com`.
 5. Reload: `docker compose up -d`  (app refuses to start if production settings are insecure — fix what it prints).
 6. Verify `https://yourdomain.com/health` and the login page over HTTPS.
@@ -145,11 +138,18 @@ cp /etc/letsencrypt/live/yourdomain.com/privkey.pem   deployment/certs/
 
 ## 8. Day-2: update / restart
 ```bash
-cd /opt/assad
-git pull            # or re-run the rsync from your PC
+cd /opt/assad-motors
+git pull                            # or re-run the rsync from your PC
+bash deployment/build_web.sh        # regenerate the nginx web root from source (it is gitignored)
 docker compose up -d --build        # rebuild + restart with zero data loss (data/ persists)
 docker compose logs -f app
 ```
+`build_web.sh` is safe to run every time — it just rebuilds `deployment/web/` from
+`app/chat_app` + `app/inventory_system`. Because that folder is gitignored and
+regenerated here, a `git stash`/`clean` can never leave nginx with an empty web
+root, and the HTTPS mount in `docker-compose.yml` is the committed default — so a
+plain `git pull` deploy can no longer revert the server to a 403 / HTTP state.
+
 Inventory changes don't need any of this — the owner uploads a new Excel in the panel and it hot-reloads.
 
 ---

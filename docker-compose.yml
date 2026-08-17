@@ -36,9 +36,13 @@ services:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
     volumes:
-      # PHASE 1 (IP / HTTP testing): use nginx.http.conf
-      # PHASE 2 (domain / HTTPS):    switch to nginx.conf and fill in certs below
-      - ./deployment/nginx.http.conf:/etc/nginx/conf.d/default.conf:ro
+      # DEFAULT = PHASE 2 (domain / HTTPS) with nginx.conf — this is the live
+      # production config; keeping it as the committed default means git pull /
+      # stash / reset can never silently revert the server to HTTP (that once
+      # caused a 403 outage). Certs live in the gitignored deployment/certs/.
+      # For a fresh PHASE-1 (raw-IP / HTTP, no domain or certs) bootstrap only,
+      # temporarily switch this line to ./deployment/nginx.http.conf.
+      - ./deployment/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./deployment/web:/usr/share/nginx/html:ro       # panel + customer pages
       - ./deployment/certs:/etc/nginx/certs:ro          # fullchain.pem + privkey.pem (HTTPS)
       - ./deployment/certbot-webroot:/var/www/certbot   # ACME http-01 challenge (HTTPS)

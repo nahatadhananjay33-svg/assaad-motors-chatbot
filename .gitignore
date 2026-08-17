@@ -50,6 +50,13 @@ deployment/certbot-webroot/
 deploy/certs/
 deploy/certbot-webroot/
 
+# ── nginx web root: BUILT on the server from app/chat_app + app/inventory_system
+#    by deployment/build_web.sh (holds the same-origin config.js). Ignored so it
+#    is a pure deploy artifact — regenerated every deploy, never tracked, and so
+#    `git stash -u` / `git clean -fd` can never sweep it away (that once left
+#    nginx with an empty web root → 403). ──
+deployment/web/
+
 # ── uploads / scratch ──
 Uploads/
 
