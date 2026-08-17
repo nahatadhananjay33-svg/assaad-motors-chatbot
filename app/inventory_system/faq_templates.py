@@ -34,9 +34,9 @@ DEFAULT_LANGUAGE = "english"
 # ─────────────────────────────────────────────────────────────────────────────
 DEALERSHIP: Dict[str, Any] = {
     "name": "Assad Motors",
-    "address": "Assad Motors, proprietor Raj Kumar Nahata, Vasant Oasis BMC Parking, Y4 Pillar, Marol, Andheri East, Mumbai 400059, Phone: 9977720000",
+    "address": "Assad Motors, Vasant Oasis BMC Parking, Y4 Pillar, Marol, Andheri East, Mumbai 400059, Phone: 90296 64381, 8828844400",
     "area": "Marol, Andheri East, Mumbai",
-    "maps_url": "https://goo.gl/maps/S6av9ZEFr4AFBmmD7?g_st=aw",
+    "maps_url": "https://maps.app.goo.gl/749n8JFj2J4UQRjv8?g_st=aw",
     # WhatsApp location-share payload (lat/long filled when known) — support only
     "whatsapp_location": {
         "name": "Assad Motors — Vasant Oasis BMC Parking",
