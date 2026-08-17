@@ -195,40 +195,39 @@ class TestChatMonitoring(DevDashboardBase):
         st, chats = route("GET", "/developer/chats", b"", self.svc, session_token=tok)
         self.assertEqual(st, 200)
         self.assertTrue(chats["available"])
-        sess = next(s for s in chats["sessions"] if s["session_id"] == "sessA")
+        sess = next(s for s in chats["conversations"] if s["session_id"] == "sessA")
         self.assertEqual(sess["messages"], 3)
 
         st, det = route("GET", "/developer/chats/sessA", b"", self.svc, session_token=tok)
         self.assertEqual(st, 200)
         self.assertEqual(det["messages"], 3)
-        # ordered oldest-first
+        # ordered oldest-first; conversation-only (customer + agent), no metadata
         self.assertEqual(det["turns"][0]["customer"], "creta hai kya")
-        self.assertEqual(det["turns"][1]["intent"], "price")
+        self.assertEqual(det["turns"][1]["agent"], "7.5 lakh")
         self.assertEqual(det["turns"][2]["customer"], "automatic?")
+        self.assertEqual(set(det["turns"][0].keys()), {"timestamp", "customer", "agent"})
 
     def test_pagination(self):
         for i in range(30):
             self._seed_turn(f"s{i:02d}", "q", "a")
         tok = self._login("devx", "devx-pass-1")
         st, p0 = route("GET", "/developer/chats?page=0&page_size=10", b"", self.svc, session_token=tok)
-        self.assertEqual(len(p0["sessions"]), 10)
+        self.assertEqual(len(p0["conversations"]), 10)
         self.assertEqual(p0["total"], 30)
         self.assertEqual(p0["pages"], 3)
         st, p2 = route("GET", "/developer/chats?page=2&page_size=10", b"", self.svc, session_token=tok)
-        self.assertEqual(len(p2["sessions"]), 10)
-        ids0 = {s["session_id"] for s in p0["sessions"]}
-        ids2 = {s["session_id"] for s in p2["sessions"]}
+        self.assertEqual(len(p2["conversations"]), 10)
+        ids0 = {s["session_id"] for s in p0["conversations"]}
+        ids2 = {s["session_id"] for s in p2["conversations"]}
         self.assertFalse(ids0 & ids2)          # pages don't overlap
 
-    def test_filters_unanswered_and_slow(self):
-        self._seed_turn("good", "creta", "haan")
-        self._seed_turn("bad", "zzxx", "samajh nahi aaya", unknown=True, matched=False)
-        self._seed_turn("slow", "creta", "haan", ms=3000.0)
+    def test_keyword_search(self):
+        self._seed_turn("s_creta", "creta hai kya", "haan Creta available")
+        self._seed_turn("s_swift", "swift dikhao", "Swift ye rahi")
         tok = self._login("devx", "devx-pass-1")
-        st, un = route("GET", "/developer/chats?errors_only=1", b"", self.svc, session_token=tok)
-        self.assertEqual({s["session_id"] for s in un["sessions"]}, {"bad"})
-        st, sl = route("GET", "/developer/chats?slow_only=1", b"", self.svc, session_token=tok)
-        self.assertEqual({s["session_id"] for s in sl["sessions"]}, {"slow"})
+        st, res = route("GET", "/developer/chats?q=creta", b"", self.svc, session_token=tok)
+        self.assertEqual(st, 200)
+        self.assertEqual({s["session_id"] for s in res["conversations"]}, {"s_creta"})
 
     def test_analytics_intents_and_unanswered(self):
         self._seed_turn("s1", "price", "x", intent="price")

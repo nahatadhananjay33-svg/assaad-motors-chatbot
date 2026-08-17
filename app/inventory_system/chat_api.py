@@ -128,6 +128,8 @@ def route(method: str, path: str, body: bytes, service: ChatService,
                 return developer_dashboard.handle_overview(service)
             if path == "/developer/chats":
                 return developer_dashboard.handle_chats(service, query_string)
+            if path == "/developer/chats/export":
+                return developer_dashboard.handle_chat_export(service, query_string)
             if path.startswith("/developer/chats/"):
                 sid = path[len("/developer/chats/"):]
                 return developer_dashboard.handle_chat_detail(service, sid)
@@ -326,6 +328,28 @@ def route(method: str, path: str, body: bytes, service: ChatService,
             _log(ACCESS_LOG, logging.ERROR, "owner_download_error", error=str(e))
             return 500, {"error": "owner_download_failed", "detail": str(e)}
 
+    # ── admin: Owner customer-conversation log (read-only + export, owner-only) ──
+    if method == "GET" and path == "/admin/owner/chat_logs":
+        try:
+            return owner_panel.handle_chat_logs(service, query_string)
+        except Exception as e:
+            _log(ACCESS_LOG, logging.ERROR, "owner_chat_logs_error", error=str(e))
+            return 500, {"error": "owner_chat_logs_failed", "detail": str(e)}
+
+    if method == "GET" and path == "/admin/owner/chat_logs/detail":
+        try:
+            return owner_panel.handle_chat_logs_detail(service, query_string)
+        except Exception as e:
+            _log(ACCESS_LOG, logging.ERROR, "owner_chat_detail_error", error=str(e))
+            return 500, {"error": "owner_chat_detail_failed", "detail": str(e)}
+
+    if method == "GET" and path == "/admin/owner/chat_logs/export":
+        try:
+            return owner_panel.handle_chat_logs_export(service, query_string)
+        except Exception as e:
+            _log(ACCESS_LOG, logging.ERROR, "owner_chat_export_error", error=str(e))
+            return 500, {"error": "owner_chat_export_failed", "detail": str(e)}
+
     # ── admin: User Management (Phase 10B) — same admin gate ──
     if method == "GET" and path == "/admin/users/list":
         try:
@@ -401,6 +425,8 @@ def route(method: str, path: str, body: bytes, service: ChatService,
                 "/admin/inventory/restore_car",
                 "/admin/owner/status", "/admin/owner/upload",
                 "/admin/owner/rollback", "/admin/owner/delete_backup",
+                "/admin/owner/download", "/admin/owner/chat_logs",
+                "/admin/owner/chat_logs/detail", "/admin/owner/chat_logs/export",
                 "/admin/users/list", "/admin/users/create", "/admin/users/update",
                 "/admin/users/set_active", "/admin/users/reset_password",
                 "/admin/users/delete", "/admin/users/my_permissions",

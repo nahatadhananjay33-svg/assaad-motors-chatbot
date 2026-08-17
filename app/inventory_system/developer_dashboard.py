@@ -40,6 +40,7 @@ from urllib.parse import parse_qs
 
 import audit
 import config
+import chat_export
 
 try:
     import security  # for mask_pii — never leak a customer phone/name in errors
@@ -224,95 +225,6 @@ def _scalar(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Any:
         return row[0] if row else None
     except Exception:
         return None
-
-
-def _parse_filters(raw: Any) -> Optional[Dict[str, Any]]:
-    """The stored `filters` column is compact JSON of the active filter dict.
-    Return it parsed for the dashboard, or None for older rows / empty turns."""
-    if not raw:
-        return None
-    try:
-        val = json.loads(raw)
-        return val if isinstance(val, dict) else None
-    except (TypeError, ValueError):
-        return None
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# chat filters (shared by the Chats list and analytics)
-# ─────────────────────────────────────────────────────────────────────────────
-_RANGE_TO_CUT = {
-    "today": lambda w: w["today"],
-    "yesterday": lambda w: w["yesterday"],
-    "7d": lambda w: w["d7"],
-    "30d": lambda w: w["d30"],
-}
-
-
-def _row_where(q: Dict[str, List[str]]) -> Tuple[str, list]:
-    """Build a message-level WHERE clause from query params. A session matches
-    when it has >=1 message satisfying every active filter."""
-    w = _windows()
-    where: List[str] = []
-    params: list = []
-
-    rng = (q.get("range", [""])[0] or "").strip().lower()
-    if rng in _RANGE_TO_CUT:
-        cut = _RANGE_TO_CUT[rng](w)
-        if rng == "yesterday":
-            where.append("substr(timestamp,1,19) >= ? AND substr(timestamp,1,19) < ?")
-            params += [cut, w["today"]]
-        else:
-            where.append("substr(timestamp,1,19) >= ?")
-            params.append(cut)
-
-    since = (q.get("since", [""])[0] or "").strip()
-    if since:
-        where.append("substr(timestamp,1,19) >= ?")
-        params.append(since[:19])
-    until = (q.get("until", [""])[0] or "").strip()
-    if until:
-        where.append("substr(timestamp,1,19) <= ?")
-        params.append(until[:19])
-
-    kw = (q.get("q", [""])[0] or "").strip()
-    if kw:
-        term = f"%{kw.lower()}%"
-        where.append("(LOWER(IFNULL(user_query,'')) LIKE ? OR "
-                     "LOWER(IFNULL(bot_response,'')) LIKE ?)")
-        params += [term, term]
-
-    intent = (q.get("intent", [""])[0] or "").strip()
-    if intent:
-        where.append("LOWER(IFNULL(detected_intent,'')) = ?")
-        params.append(intent.lower())
-
-    lang = (q.get("language", [""])[0] or "").strip()
-    if lang:
-        where.append("LOWER(IFNULL(detected_language,'')) = ?")
-        params.append(lang.lower())
-
-    model = (q.get("model", [""])[0] or "").strip()
-    if model:
-        term = f"%{model.lower()}%"
-        where.append("(LOWER(IFNULL(vehicle_selected,'')) LIKE ? OR "
-                     "LOWER(IFNULL(user_query,'')) LIKE ?)")
-        params += [term, term]
-
-    sess = (q.get("session", [""])[0] or "").strip()
-    if sess:
-        where.append("session_id = ?")
-        params.append(sess)
-
-    if (q.get("errors_only", [""])[0] or "").strip() in ("1", "true", "yes"):
-        where.append("unknown_flag = 1")
-
-    if (q.get("slow_only", [""])[0] or "").strip() in ("1", "true", "yes"):
-        where.append("IFNULL(response_time_ms,0) >= ?")
-        params.append(SLOW_MS)
-
-    clause = (" WHERE " + " AND ".join(where)) if where else ""
-    return clause, params
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -631,10 +543,13 @@ def handle_overview(service: Any) -> Tuple[int, Dict[str, Any]]:
 
 
 def handle_chats(service: Any, query_string: str = "") -> Tuple[int, Dict[str, Any]]:
+    """Simple conversation list — one entry per conversation (id, when, how many
+    messages). No intent / latency / filters / language / result-count; those are
+    no longer persisted and never belong in the conversation view."""
     q = parse_qs(query_string or "")
-    conn = _pilot_conn(service)
-    if conn is None:
-        return 200, {"available": False, "sessions": [], "total": 0,
+    path = _pilot_path(service)
+    if not path:
+        return 200, {"available": False, "conversations": [], "total": 0,
                      "page": 0, "page_size": _PAGE_DEFAULT, "pages": 0}
     try:
         page = max(0, int((q.get("page", ["0"])[0]) or 0))
@@ -645,109 +560,40 @@ def handle_chats(service: Any, query_string: str = "") -> Tuple[int, Dict[str, A
     except ValueError:
         size = _PAGE_DEFAULT
     size = max(1, min(size, _PAGE_MAX))
+    range_key = (q.get("range", [""])[0] or "").strip().lower()
+    keyword = (q.get("q", [""])[0] or "").strip()
 
-    clause, params = _row_where(q)
-    base = ("FROM query_log" + clause +
-            (" AND " if clause else " WHERE ") +
-            "session_id IS NOT NULL AND session_id != ''")
-    try:
-        total = int(_scalar(conn,
-            f"SELECT COUNT(*) FROM (SELECT 1 {base} GROUP BY session_id)", tuple(params)) or 0)
-        rows = conn.execute(
-            f"""SELECT session_id,
-                       COUNT(*)                         AS messages,
-                       MIN(timestamp)                   AS started,
-                       MAX(timestamp)                   AS last_activity,
-                       MAX(IFNULL(response_time_ms,0))  AS max_ms,
-                       AVG(response_time_ms)            AS avg_ms,
-                       SUM(unknown_flag)                AS unknown_count,
-                       MAX(matched_inventory)           AS matched,
-                       GROUP_CONCAT(DISTINCT detected_language) AS languages
-                {base}
-                GROUP BY session_id
-                ORDER BY MAX(timestamp) DESC
-                LIMIT ? OFFSET ?""",
-            (*params, size, page * size)).fetchall()
-        sessions = []
-        for r in rows:
-            d = dict(r)
-            langs = [x for x in (d.get("languages") or "").split(",") if x]
-            sessions.append({
-                "session_id": d["session_id"],
-                "messages": int(d["messages"] or 0),
-                "started": d["started"],
-                "last_activity": d["last_activity"],
-                "max_response_ms": round(float(d["max_ms"]), 1) if d["max_ms"] is not None else None,
-                "avg_response_ms": round(float(d["avg_ms"]), 1) if d["avg_ms"] is not None else None,
-                "unknown_count": int(d["unknown_count"] or 0),
-                "matched_inventory": bool(d["matched"]),
-                "languages": langs,
-                "slow": bool(d["max_ms"] and d["max_ms"] >= SLOW_MS),
-            })
-        return 200, {
-            "available": True, "sessions": sessions, "total": total,
-            "page": page, "page_size": size,
-            "pages": (total + size - 1) // size if size else 0,
-            "slow_ms": SLOW_MS,
-        }
-    except Exception as e:
-        return 500, {"error": "chats_failed", "detail": str(e)}
-    finally:
-        conn.close()
+    data = chat_export.list_conversations(path, range_key=range_key, keyword=keyword,
+                                          page=page, page_size=size)
+    data["available"] = data.get("available", True)
+    return 200, data
 
 
 def handle_chat_detail(service: Any, session_id: str) -> Tuple[int, Dict[str, Any]]:
-    conn = _pilot_conn(service)
-    if conn is None:
+    """A single conversation as a plain customer/agent transcript."""
+    path = _pilot_path(service)
+    if not path:
         return 404, {"error": "not_found", "detail": "No conversation log available."}
     if not session_id:
         return 400, {"error": "bad_request", "detail": "session_id required."}
-    try:
-        rows = conn.execute(
-            "SELECT * FROM query_log WHERE session_id = ? ORDER BY id ASC",
-            (session_id,)).fetchall()
-        if not rows:
-            return 404, {"error": "not_found", "detail": "Unknown session."}
-        turns = []
-        langs = set()
-        for r in rows:
-            d = dict(r)
-            if d.get("detected_language"):
-                langs.add(d["detected_language"])
-            turns.append({
-                "timestamp": d.get("timestamp"),
-                "customer": d.get("user_query"),
-                "bot": d.get("bot_response"),
-                "intent": d.get("detected_intent"),
-                "language": d.get("detected_language"),
-                "route": d.get("route"),
-                "matched_inventory": bool(d.get("matched_inventory")),
-                "unknown": bool(d.get("unknown_flag")),
-                "vehicles": d.get("vehicle_selected"),
-                "response_ms": d.get("response_time_ms"),
-                "lead_level": d.get("lead_level"),
-                "visit_ready": bool(d.get("visit_ready")),
-                "filters": _parse_filters(d.get("filters")),
-                "result_count": d.get("result_count"),
-            })
-        started, last = turns[0]["timestamp"], turns[-1]["timestamp"]
-        duration = None
-        try:
-            duration = int((datetime.fromisoformat(last) - datetime.fromisoformat(started)).total_seconds())
-        except Exception:
-            duration = None
-        return 200, {
-            "session_id": session_id,
-            "started": started, "last_activity": last, "duration_seconds": duration,
-            "messages": len(turns), "languages": sorted(langs),
-            "unanswered": sum(1 for t in turns if t["unknown"]),
-            "visit_ready": any(t["visit_ready"] for t in turns),
-            "turns": turns, "slow_ms": SLOW_MS,
-        }
-    except Exception as e:
-        return 500, {"error": "chat_detail_failed", "detail": str(e)}
-    finally:
-        conn.close()
+    detail = chat_export.conversation_detail(path, session_id)
+    if detail is None:
+        return 404, {"error": "not_found", "detail": "Unknown conversation."}
+    return 200, detail
+
+
+def handle_chat_export(service: Any, query_string: str = "") -> Tuple[int, Dict[str, Any]]:
+    """Download the customer↔agent conversation log as CSV or XLSX.
+    Columns: timestamp, conversation_id, speaker, message. Auth is enforced
+    upstream (Developer session only)."""
+    q = parse_qs(query_string or "")
+    path = _pilot_path(service)
+    if not path:
+        return 404, {"status": "error", "detail": "No conversation log available."}
+    fmt = (q.get("format", ["csv"])[0] or "csv").strip().lower()
+    range_key = (q.get("range", ["all"])[0] or "all").strip().lower()
+    keyword = (q.get("q", [""])[0] or "").strip()
+    return chat_export.export_payload(path, fmt=fmt, range_key=range_key, keyword=keyword)
 
 
 # ── Admin-activity card drill-down ──────────────────────────────────────────

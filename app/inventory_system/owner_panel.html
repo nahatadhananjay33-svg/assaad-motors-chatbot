@@ -139,6 +139,31 @@
     <div id="auditCount" class="muted" style="margin-top:10px;"></div>
   </div>
 
+  <!-- Customer Conversations (read-only: customer ↔ agent messages + download) -->
+  <div class="card" id="convCard">
+    <h2>Customer Conversations</h2>
+    <p class="muted" style="margin-top:0;">Every customer chat with the assistant — just the
+    customer's message and the assistant's reply. Open one to read it, or download them all.</p>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin-bottom:10px;">
+      <span id="convRanges" style="display:flex; gap:6px;"></span>
+      <input type="text" id="convSearch" placeholder="Search messages…"
+             style="flex:1; min-width:180px; padding:9px; font-size:15px; border:1px solid #bcccdc; border-radius:8px;" />
+      <select id="convFmt" title="Download format"
+              style="padding:9px; font-size:15px; border:1px solid #bcccdc; border-radius:8px;">
+        <option value="csv">CSV</option><option value="xlsx">Excel (XLSX)</option>
+      </select>
+      <button id="convDownload" class="grey" style="padding:9px 16px; font-size:15px;">⬇ Download Chat Logs</button>
+    </div>
+    <div style="overflow-x:auto;">
+      <table>
+        <thead><tr><th>Conversation</th><th>Started</th><th>Last activity</th><th>Messages</th></tr></thead>
+        <tbody id="convRows"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div id="convPager" class="muted" style="margin-top:10px; display:flex; gap:10px; align-items:center;"></div>
+    <div id="convDetail" style="display:none; margin-top:14px; border-top:1px solid #e9eef4; padding-top:12px;"></div>
+  </div>
+
 <script src="auth_guard.js"></script>
 <script>
   var $ = function (id) { return document.getElementById(id); };
@@ -173,6 +198,8 @@
       var el = $(id);
       if (el) el.style.display = isOwner() ? "" : "none";
     });
+    // Customer Conversations is Owner-only (backend enforces chatlogs.view too).
+    if ($("convCard")) $("convCard").style.display = isOwner() ? "" : "none";
     return true;
   }
   function loadPerms() {
@@ -476,12 +503,108 @@
   });
   $("auditRefresh").onclick = loadAudit;
 
+  // ── Customer Conversations (read-only customer ↔ agent log + download) ──────
+  var convState = { page: 0, range: "", q: "" };
+  function convRangeChips() {
+    var opts = [["today", "Today"], ["7d", "Last 7 days"], ["30d", "Last 30 days"], ["", "All"]];
+    $("convRanges").innerHTML = opts.map(function (o) {
+      var active = (convState.range === o[0]);
+      return "<button class='grey' data-range='" + o[0] + "' style='padding:7px 12px;font-size:14px;"
+        + (active ? "background:#334e68;color:#fff;" : "") + "'>" + o[1] + "</button>";
+    }).join("");
+    [].slice.call($("convRanges").querySelectorAll("button")).forEach(function (b) {
+      b.onclick = function () { convState.range = b.dataset.range; convState.page = 0; convRangeChips(); loadConversations(); };
+    });
+  }
+  function loadConversations() {
+    if (!isOwner()) return;
+    var qs = "?page=" + convState.page + "&page_size=25";
+    if (convState.range) qs += "&range=" + encodeURIComponent(convState.range);
+    if (convState.q) qs += "&q=" + encodeURIComponent(convState.q);
+    fetch(baseUrl() + "/admin/owner/chat_logs" + qs, { headers: headers() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var convos = d.conversations || [];
+        if (!d.available) { $("convRows").innerHTML = "<tr><td colspan='4' class='muted'>No conversation log available.</td></tr>"; $("convPager").innerHTML = ""; return; }
+        if (!convos.length) { $("convRows").innerHTML = "<tr><td colspan='4' class='muted'>No conversations found.</td></tr>"; }
+        else {
+          $("convRows").innerHTML = convos.map(function (c) {
+            var cid = String(c.conversation_id || c.session_id || "");
+            return "<tr class='convRow' data-sid='" + esc(c.session_id) + "' style='cursor:pointer'>"
+              + "<td>" + esc(cid.length > 14 ? cid.slice(0, 12) + "…" : cid) + "</td>"
+              + "<td>" + _localFmt(c.started) + "</td><td>" + _localFmt(c.last_activity) + "</td>"
+              + "<td>" + (c.messages || 0) + "</td></tr>";
+          }).join("");
+          [].slice.call($("convRows").querySelectorAll(".convRow")).forEach(function (tr) {
+            tr.onclick = function () { openConversation(tr.dataset.sid); };
+          });
+        }
+        var pages = d.pages || 0;
+        $("convPager").innerHTML =
+          "<button class='grey' id='convPrev' style='padding:7px 12px' " + (convState.page <= 0 ? "disabled" : "") + ">‹ Prev</button>"
+          + "<span>Page " + (convState.page + 1) + " / " + Math.max(1, pages) + " · " + (d.total || 0) + " conversations</span>"
+          + "<button class='grey' id='convNext' style='padding:7px 12px' " + (convState.page + 1 >= pages ? "disabled" : "") + ">Next ›</button>";
+        if ($("convPrev")) $("convPrev").onclick = function () { if (convState.page > 0) { convState.page--; loadConversations(); } };
+        if ($("convNext")) $("convNext").onclick = function () { if (convState.page + 1 < pages) { convState.page++; loadConversations(); } };
+      })
+      .catch(function (e) { $("convRows").innerHTML = "<tr><td colspan='4' class='muted'>Network problem: " + esc(e.message) + "</td></tr>"; });
+  }
+  function openConversation(sid) {
+    var box = $("convDetail");
+    box.style.display = "block";
+    box.innerHTML = "<div class='muted'>Loading…</div>";
+    fetch(baseUrl() + "/admin/owner/chat_logs/detail?id=" + encodeURIComponent(sid), { headers: headers() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "error") { box.innerHTML = "<div class='muted'>" + esc(d.detail || "Not found") + "</div>"; return; }
+        var turns = (d.turns || []).map(function (t) {
+          return "<div style='margin:0 0 12px'>"
+            + "<div style='font-weight:600'>🧑 " + esc(t.customer || "—") + "</div>"
+            + "<div style='margin-top:4px;color:#334e68;white-space:pre-wrap'>🤖 " + esc(t.agent || "—") + "</div>"
+            + "<div class='muted' style='font-size:12px;margin-top:3px'>" + _localFmt(t.timestamp, true) + "</div></div>";
+        }).join("");
+        box.innerHTML = "<button class='grey' style='padding:6px 12px' onclick=\"document.getElementById('convDetail').style.display='none'\">✕ Close</button>"
+          + "<h3 style='margin:10px 0 4px'>Conversation</h3>"
+          + "<div class='muted' style='font-size:13px;margin-bottom:10px'>" + esc(d.conversation_id || d.session_id) + " · " + (d.messages || 0) + " messages</div>"
+          + turns;
+      })
+      .catch(function (e) { box.innerHTML = "<div class='muted'>Network problem: " + esc(e.message) + "</div>"; });
+  }
+  function downloadConversations() {
+    var fmt = ($("convFmt") && $("convFmt").value) || "csv";
+    var range = convState.range || "all";
+    var qs = "?format=" + encodeURIComponent(fmt) + "&range=" + encodeURIComponent(range);
+    if (convState.q) qs += "&q=" + encodeURIComponent(convState.q);
+    var btn = $("convDownload"); if (btn) { btn.disabled = true; btn.textContent = "Preparing…"; }
+    fetch(baseUrl() + "/admin/owner/chat_logs/export" + qs, { headers: headers() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status !== "ok") { alert("Download failed: " + (d.detail || "unknown error")); return; }
+        var bytes = Uint8Array.from(atob(d.content_b64), function (c) { return c.charCodeAt(0); });
+        var blob = new Blob([bytes], { type: d.mime || "application/octet-stream" });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement("a"); a.href = url; a.download = d.file_name || ("chat_logs." + fmt);
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      })
+      .catch(function (e) { alert("Download failed: " + e.message); })
+      .finally(function () { if (btn) { btn.disabled = false; btn.textContent = "⬇ Download Chat Logs"; } });
+  }
+  var _convTimer = null;
+  $("convSearch").addEventListener("input", function () {
+    clearTimeout(_convTimer); _convTimer = setTimeout(function () {
+      convState.q = $("convSearch").value.trim(); convState.page = 0; loadConversations();
+    }, 300);
+  });
+  $("convDownload").onclick = downloadConversations;
+
   var _origLoad = load;
   load = function () {
     remember();
     loadPerms().then(function (allowed) {
       if (allowed === false) return;               // Access Denied — nothing loads
       _origLoad(); loadUsers(); renderAuditFilters(); loadAudit();
+      convRangeChips(); loadConversations();
     });
   };
 

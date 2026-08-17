@@ -141,6 +141,69 @@ def handle_download(service: Any, slot: str = "live") -> Tuple[int, Dict[str, An
                  "content_b64": base64.b64encode(data).decode("ascii")}
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# customer conversation log (read-only) — owner visibility + export
+# The Owner sees the SAME simple customer↔agent conversations as the Developer
+# Dashboard: message + reply only, no intent/filters/latency/internal metadata.
+# ─────────────────────────────────────────────────────────────────────────────
+def _pilot_db_path(service: Any) -> Optional[str]:
+    pl = getattr(service, "pilot_log", None)
+    path = getattr(pl, "path", None)
+    return path if path and os.path.exists(path) else None
+
+
+def handle_chat_logs(service: Any, query_string: str = "") -> Tuple[int, Dict[str, Any]]:
+    """Owner conversation list — one entry per conversation."""
+    import chat_export
+    from urllib.parse import parse_qs
+    path = _pilot_db_path(service)
+    if not path:
+        return 200, {"available": False, "conversations": [], "total": 0,
+                     "page": 0, "page_size": 25, "pages": 0}
+    q = parse_qs(query_string or "")
+    def _int(name, default):
+        try:
+            return int((q.get(name, [str(default)])[0]) or default)
+        except (TypeError, ValueError):
+            return default
+    data = chat_export.list_conversations(
+        path, range_key=(q.get("range", [""])[0] or "").strip().lower(),
+        keyword=(q.get("q", [""])[0] or "").strip(),
+        page=max(0, _int("page", 0)), page_size=_int("page_size", 25))
+    data["available"] = data.get("available", True)
+    return 200, data
+
+
+def handle_chat_logs_detail(service: Any, query_string: str = "") -> Tuple[int, Dict[str, Any]]:
+    """A single conversation as a plain customer/agent transcript."""
+    import chat_export
+    from urllib.parse import parse_qs
+    path = _pilot_db_path(service)
+    if not path:
+        return 404, {"status": "error", "detail": "No conversation log available."}
+    sid = (parse_qs(query_string or "").get("id", [""])[0] or "").strip()
+    if not sid:
+        return 400, {"status": "error", "detail": "conversation id required."}
+    detail = chat_export.conversation_detail(path, sid)
+    if detail is None:
+        return 404, {"status": "error", "detail": "Unknown conversation."}
+    return 200, detail
+
+
+def handle_chat_logs_export(service: Any, query_string: str = "") -> Tuple[int, Dict[str, Any]]:
+    """Download the customer↔agent conversation log as CSV or XLSX (owner-only)."""
+    import chat_export
+    from urllib.parse import parse_qs
+    path = _pilot_db_path(service)
+    if not path:
+        return 404, {"status": "error", "detail": "No conversation log available."}
+    q = parse_qs(query_string or "")
+    return chat_export.export_payload(
+        path, fmt=(q.get("format", ["csv"])[0] or "csv").strip().lower(),
+        range_key=(q.get("range", ["all"])[0] or "all").strip().lower(),
+        keyword=(q.get("q", [""])[0] or "").strip())
+
+
 def handle_upload(service: Any, body: bytes, content_type: str
                   ) -> Tuple[int, Dict[str, Any]]:
     try:

@@ -83,6 +83,12 @@ PATH_PERMISSIONS: Dict[str, str] = {
     "/admin/owner/rollback": "excel.rollback",
     "/admin/owner/delete_backup": "excel.delete_backup",
     "/admin/owner/download": "excel.download",       # owner-only (has "*")
+    # Customer conversation log — read-only view + export. Owner-only: no role
+    # below lists "chatlogs.view", so only the Owner (ALL) is admitted; every
+    # other staff role and the Developer get 403.
+    "/admin/owner/chat_logs": "chatlogs.view",
+    "/admin/owner/chat_logs/detail": "chatlogs.view",
+    "/admin/owner/chat_logs/export": "chatlogs.view",
     "/admin/users/list": "users.view",
     "/admin/users/create": "users.manage",
     "/admin/users/update": "users.manage",

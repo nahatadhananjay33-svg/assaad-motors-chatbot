@@ -2,23 +2,31 @@
 pilot_query_log.py
 ===================
 
-Phase 5B — pilot query-level logging. Purely additive: a new SQLite table
-(`query_log`) and a CSV exporter for unresolved ("unknown") queries. Does not
-touch retrieval, parser, FAQ, inventory-matching, or `analytics.py` /
-`unknown_query_store.py` (which remain in place for the existing lead funnel
-reports).
+Pilot query-level logging. A SQLite table (`query_log`) holding the customer
+conversation, plus a small `unknown_log` kept for backward compatibility.
 
-Schema (one row per `ChatService.handle()` call):
+SIMPLIFICATION (chat-log slim-down): the persistent conversation record is now
+deliberately minimal — the chatbot writes only the customer message and the
+agent reply per turn:
 
-    timestamp, conversation_id, session_id, user_query, detected_language,
-    detected_intent, route, unknown_flag, matched_inventory, response_time_ms,
-    bot_response, lead_level, visit_ready, vehicle_selected
+    timestamp, conversation_id, session_id, user_query, bot_response
 
-Phase 8C: the last four columns were added so a complete (customer message +
-bot reply) conversation can be reconstructed from production logs. They are
-purely additive — existing rows keep NULLs and `_ensure_columns()` migrates an
-existing DB in place (SQLite ADD COLUMN, no table rewrite). No other logging,
-retrieval, parser, FAQ, inventory, or lead logic is changed.
+The chatbot still computes intent / filters / retrieval / result_count etc.
+internally to answer the customer — those runtime values are simply no longer
+persisted (runtime intelligence != persistent chat history). See
+`instrumented_chat_service.py`.
+
+Historical rows are preserved untouched. The older monitoring columns
+(`detected_language, detected_intent, route, unknown_flag, matched_inventory,
+response_time_ms, lead_level, visit_ready, vehicle_selected`) remain in the
+table schema so existing databases open unchanged and their historical values
+stay readable, but the chatbot no longer populates them (they default to
+NULL/0 on new rows). No destructive migration is performed. The never-deployed
+`filters` / `result_count` columns have been removed from the code entirely.
+
+`record()` still accepts and writes the legacy columns when a caller supplies
+them (used only by tests / direct seeding); production logging goes through the
+minimal path above.
 """
 
 from __future__ import annotations
@@ -31,6 +39,10 @@ from typing import Any, Dict, List, Optional
 
 DEFAULT_DB = "pilot_query_log.db"
 
+# The core, minimal conversation columns (timestamp + conversation ids +
+# customer message + agent reply) come first. The remaining columns are legacy
+# monitoring fields kept ONLY so pre-existing databases open unchanged and their
+# historical values stay readable — the chatbot no longer writes them.
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS query_log (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -38,32 +50,29 @@ CREATE TABLE IF NOT EXISTS query_log (
     conversation_id   TEXT,
     session_id        TEXT,
     user_query        TEXT,
+    bot_response      TEXT,
     detected_language TEXT,
     detected_intent   TEXT,
     route             TEXT,
     unknown_flag      INTEGER DEFAULT 0,
     matched_inventory INTEGER DEFAULT 0,
     response_time_ms  REAL,
-    bot_response      TEXT,
     lead_level        TEXT,
     visit_ready       INTEGER DEFAULT 0,
-    vehicle_selected  TEXT,
-    filters           TEXT,
-    result_count      INTEGER DEFAULT 0
+    vehicle_selected  TEXT
 );
 """
 
-# Columns added after the table first shipped — migrated in place (SQLite ADD
-# COLUMN is non-destructive; existing rows get NULL/default).
+# Columns that older databases may be missing — added in place if absent (SQLite
+# ADD COLUMN is non-destructive; existing rows get NULL/default). `bot_response`
+# is the one genuinely required to reconstruct a conversation; the rest are
+# legacy/dormant. filters/result_count were never deployed and are intentionally
+# absent here so no new column is ever created for them.
 _ADDED_COLUMNS = {
     "bot_response": "TEXT",
     "lead_level": "TEXT",
     "visit_ready": "INTEGER DEFAULT 0",
     "vehicle_selected": "TEXT",
-    # applied inventory filters (JSON of the active filter dict) + result count,
-    # for monitoring which filters customers use and how many cars matched.
-    "filters": "TEXT",
-    "result_count": "INTEGER DEFAULT 0",
 }
 
 _UNKNOWN_SCHEMA = """
@@ -84,19 +93,19 @@ class QueryLogEntry:
     conversation_id: Optional[str]
     session_id: Optional[str]
     user_query: str
-    detected_language: Optional[str]
-    detected_intent: Optional[str]
-    route: str
-    unknown_flag: bool
-    matched_inventory: bool
-    response_time_ms: Optional[float]
-    # Phase 8C — optional (default None/False) so every existing caller keeps working.
     bot_response: Optional[str] = None
+    # ── legacy monitoring fields (optional; NOT written by the production
+    #    chatbot any more — kept so direct-seeding callers / tests still work
+    #    and historical rows keep their meaning). ──
+    detected_language: Optional[str] = None
+    detected_intent: Optional[str] = None
+    route: str = ""
+    unknown_flag: bool = False
+    matched_inventory: bool = False
+    response_time_ms: Optional[float] = None
     lead_level: Optional[str] = None
     visit_ready: bool = False
     vehicle_selected: Optional[str] = None
-    filters: Optional[str] = None          # JSON of the active filter dict
-    result_count: int = 0                  # number of vehicles matched this turn
 
 
 class PilotQueryLog:
@@ -125,18 +134,18 @@ class PilotQueryLog:
         with self._lock:
             cur = self._conn.execute(
                 "INSERT INTO query_log "
-                "(timestamp, conversation_id, session_id, user_query, "
+                "(timestamp, conversation_id, session_id, user_query, bot_response, "
                 " detected_language, detected_intent, route, unknown_flag, "
                 " matched_inventory, response_time_ms, "
-                " bot_response, lead_level, visit_ready, vehicle_selected, "
-                " filters, result_count) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " lead_level, visit_ready, vehicle_selected) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (entry.timestamp, entry.conversation_id, entry.session_id,
-                 entry.user_query, entry.detected_language, entry.detected_intent,
+                 entry.user_query, entry.bot_response,
+                 entry.detected_language, entry.detected_intent,
                  entry.route, int(entry.unknown_flag), int(entry.matched_inventory),
                  entry.response_time_ms,
-                 entry.bot_response, entry.lead_level, int(bool(entry.visit_ready)),
-                 entry.vehicle_selected, entry.filters, int(entry.result_count or 0)))
+                 entry.lead_level, int(bool(entry.visit_ready)),
+                 entry.vehicle_selected))
             self._conn.commit()
             row_id = cur.lastrowid
 
