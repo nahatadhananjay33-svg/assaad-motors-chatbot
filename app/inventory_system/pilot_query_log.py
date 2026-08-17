@@ -47,16 +47,23 @@ CREATE TABLE IF NOT EXISTS query_log (
     bot_response      TEXT,
     lead_level        TEXT,
     visit_ready       INTEGER DEFAULT 0,
-    vehicle_selected  TEXT
+    vehicle_selected  TEXT,
+    filters           TEXT,
+    result_count      INTEGER DEFAULT 0
 );
 """
 
-# Phase 8C: columns added after the table first shipped — migrated in place.
+# Columns added after the table first shipped — migrated in place (SQLite ADD
+# COLUMN is non-destructive; existing rows get NULL/default).
 _ADDED_COLUMNS = {
     "bot_response": "TEXT",
     "lead_level": "TEXT",
     "visit_ready": "INTEGER DEFAULT 0",
     "vehicle_selected": "TEXT",
+    # applied inventory filters (JSON of the active filter dict) + result count,
+    # for monitoring which filters customers use and how many cars matched.
+    "filters": "TEXT",
+    "result_count": "INTEGER DEFAULT 0",
 }
 
 _UNKNOWN_SCHEMA = """
@@ -88,6 +95,8 @@ class QueryLogEntry:
     lead_level: Optional[str] = None
     visit_ready: bool = False
     vehicle_selected: Optional[str] = None
+    filters: Optional[str] = None          # JSON of the active filter dict
+    result_count: int = 0                  # number of vehicles matched this turn
 
 
 class PilotQueryLog:
@@ -119,14 +128,15 @@ class PilotQueryLog:
                 "(timestamp, conversation_id, session_id, user_query, "
                 " detected_language, detected_intent, route, unknown_flag, "
                 " matched_inventory, response_time_ms, "
-                " bot_response, lead_level, visit_ready, vehicle_selected) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                " bot_response, lead_level, visit_ready, vehicle_selected, "
+                " filters, result_count) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (entry.timestamp, entry.conversation_id, entry.session_id,
                  entry.user_query, entry.detected_language, entry.detected_intent,
                  entry.route, int(entry.unknown_flag), int(entry.matched_inventory),
                  entry.response_time_ms,
                  entry.bot_response, entry.lead_level, int(bool(entry.visit_ready)),
-                 entry.vehicle_selected))
+                 entry.vehicle_selected, entry.filters, int(entry.result_count or 0)))
             self._conn.commit()
             row_id = cur.lastrowid
 

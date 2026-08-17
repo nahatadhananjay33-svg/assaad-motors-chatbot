@@ -226,6 +226,18 @@ def _scalar(conn: sqlite3.Connection, sql: str, params: tuple = ()) -> Any:
         return None
 
 
+def _parse_filters(raw: Any) -> Optional[Dict[str, Any]]:
+    """The stored `filters` column is compact JSON of the active filter dict.
+    Return it parsed for the dashboard, or None for older rows / empty turns."""
+    if not raw:
+        return None
+    try:
+        val = json.loads(raw)
+        return val if isinstance(val, dict) else None
+    except (TypeError, ValueError):
+        return None
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # chat filters (shared by the Chats list and analytics)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -715,6 +727,8 @@ def handle_chat_detail(service: Any, session_id: str) -> Tuple[int, Dict[str, An
                 "response_ms": d.get("response_time_ms"),
                 "lead_level": d.get("lead_level"),
                 "visit_ready": bool(d.get("visit_ready")),
+                "filters": _parse_filters(d.get("filters")),
+                "result_count": d.get("result_count"),
             })
         started, last = turns[0]["timestamp"], turns[-1]["timestamp"]
         duration = None

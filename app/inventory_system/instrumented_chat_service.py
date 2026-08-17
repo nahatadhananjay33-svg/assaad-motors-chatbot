@@ -14,6 +14,7 @@ used throughout Phase 5A's `conversation_dataset.csv` / `conv_<id>` ids).
 
 from __future__ import annotations
 
+import json
 from typing import Any, Optional
 
 from chat_service import ChatService, ChatResult
@@ -60,8 +61,23 @@ class InstrumentedChatService(ChatService):
             lead_level=meta.get("lead_level"),
             visit_ready=bool(meta.get("visit_ready")),
             vehicle_selected=self._vehicles_shown(out),
+            # Phase: applied inventory filters + how many cars matched, for
+            # monitoring. filters is q.active_filters() already on the result;
+            # serialize to compact JSON (None when empty so the column stays tidy).
+            filters=self._filters_json(out),
+            result_count=int(out.count or 0),
         ))
         return out
+
+    @staticmethod
+    def _filters_json(out: ChatResult) -> Optional[str]:
+        f = getattr(out, "filters", None)
+        if not f:
+            return None
+        try:
+            return json.dumps(f, ensure_ascii=False, sort_keys=True, default=str)
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _vehicles_shown(out: ChatResult) -> Optional[str]:
