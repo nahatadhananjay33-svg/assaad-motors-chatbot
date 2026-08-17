@@ -1225,10 +1225,24 @@ def parse(utterance: str) -> Query:
     _p12g_names_class = (q.model is not None or q.make is not None
                          or q.category is not None)
     if not _p12g_search and not _p12g_names_class:
+        # A transmission/fuel value becomes an attribute-QUESTION about one car
+        # only when the stated filters are transmission/fuel ALONE — the two
+        # dimensions that have a question form here ("automatic aur petrol hai?"
+        # asks the pinned car both). The moment the customer adds ANY other
+        # concrete filter (colour, price, seats, km, owner, year, insurance), the
+        # utterance is a multi-constraint BROWSE ("manual white petrol mein kya
+        # hai") and every value must stay a hard filter — never silently dropped.
+        # A registration / partial plate is excluded: it pins ONE car, so a
+        # transmission/fuel question about that car is still legitimate.
+        _browse_filters = set(q.active_filters()) - {"reg_partial"}
+        _attr_dims = {"transmission", "fuel"}
         # RULE C — transmission: "automatic hai?", "manual hai?", "transmission
-        # automatic hai?" set a transmission FILTER above; make it a question.
+        # automatic hai?" set a transmission FILTER above; make it a question —
+        # but only when no non-transmission/fuel filter turns it into a browse.
         if (q.transmission is not None and not q.transmission_query
-                and _is_attr_question(text)):
+                and _is_attr_question(text)
+                and _browse_filters <= _attr_dims
+                and not q.sort_cheapest and not q.sort_low_km):
             q.transmission = None
             q.intents.discard("transmission")
             q.transmission_query = True
@@ -1254,9 +1268,8 @@ def parse(utterance: str) -> Query:
         # reaches here.
         if (q.fuel is not None and not q.fuel_query
                 and _is_attr_question(text)
-                and q.price_max is None and q.price_min is None
-                and q.km_max is None and q.seats is None
-                and not q.sort_cheapest):
+                and _browse_filters <= _attr_dims
+                and not q.sort_cheapest and not q.sort_low_km):
             q.fuel = None
             q.intents.discard("fuel")
             q.fuel_query = True
