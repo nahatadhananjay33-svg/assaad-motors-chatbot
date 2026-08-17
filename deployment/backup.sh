@@ -23,7 +23,7 @@ trap 'rm -rf "$STAGE"' EXIT
 
 mkdir -p "$BACKUP_DIR"
 
-for name in leads analytics unknown_queries; do
+for name in leads analytics unknown_queries pilot_query_log audit; do
     src="$DATA_DIR/${name}.db"
     if [ -f "$src" ]; then
         # online, crash-consistent copy (works with WAL too)
