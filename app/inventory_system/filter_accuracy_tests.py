@@ -238,6 +238,27 @@ class TestKmChaliAndPriceBand(unittest.TestCase):
         self.assertEqual(q.price_max, 500000)
         self.assertIsNone(q.price_min)
 
+    def test_k_multiplier_chali(self):
+        q = qp.parse("40k se kam chali hui petrol")
+        self.assertEqual(q.km_max, 40000)
+        self.assertEqual(q.fuel, "Petrol")
+
+
+class TestDevanagariFilters(unittest.TestCase):
+    """Filter-audit regression: Hindi Devanagari filter words."""
+
+    def test_devanagari_transmission(self):
+        self.assertEqual(qp.parse("ऑटोमैटिक गाड़ियां").transmission, "Automatic")
+        self.assertEqual(qp.parse("मैनुअल गाड़ी").transmission, "Manual")
+
+    def test_devanagari_colours(self):
+        self.assertEqual(qp.parse("सफेद गाड़ी").color, "White")
+        self.assertEqual(qp.parse("काली गाड़ी").color, "Black")
+        self.assertEqual(qp.parse("लाल कार").color, "Red")
+
+    def test_automatic_typo(self):
+        self.assertEqual(qp.parse("automatc cars").transmission, "Automatic")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -244,6 +244,17 @@ COLOR_WORDS: Dict[str, str] = {
     # Marathi
     "pandhra": "White", "pandra": "White",
     "nila": "Blue", "piwala": "Yellow", "hirwa": "Green",
+    # Hindi Devanagari
+    "सफेद": "White", "पांढरा": "White", "पांढरी": "White",
+    "काला": "Black", "काली": "Black", "ब्लैक": "Black",
+    "चांदी": "Silver", "सिल्वर": "Silver", "चंदेरी": "Silver",
+    "स्लेटी": "Grey", "ग्रे": "Grey", "ग्रे रंग": "Grey",
+    "नीला": "Blue", "नीली": "Blue", "ब्लू": "Blue",
+    "लाल": "Red", "लाल रंग": "Red",
+    "भूरा": "Brown", "भूरी": "Brown",
+    "सुनहरा": "Gold", "सुनहरी": "Gold", "गोल्ड": "Gold",
+    "हरा": "Green", "हरी": "Green",
+    "नारंगी": "Orange",
 }
 # merge additional slang colours (lowest precedence; do not override above)
 for _c_alias, _c_canon in COLOR_ADDITIONS.items():
@@ -921,9 +932,15 @@ def parse(utterance: str) -> Query:
         # Phase 7H.2 broken-Hindi / Marathi
         "clach nahi", "clach nako", "gear nahi", "गिअर नसलेली", "क्लच नको",
         "at गाडी", "सोपी गाडी", "ऑटोमॅटिक",
+        # Hindi Devanagari (मै spelling) + short forms
+        "ऑटोमैटिक", "आटोमैटिक", "ऑटो", "ऑटोमेटिक",
+        # common typos / misspellings
+        "automatc", "automaic", "automatik", "atomatic", "automactic", "automatci",
     ] + TRANSMISSION_AUTO_TERMS
     _manual_terms = [
         "manual", "gear wali", "stick", "clutch wali", "मॅन्युअल",
+        # Hindi Devanagari
+        "मैनुअल", "मैन्युअल", "गियर वाली", "गिअर वाली",
     ] + TRANSMISSION_MANUAL_TERMS
     if any(_has(text, w) for w in _auto_terms):
         q.transmission = Transmission.AUTOMATIC
@@ -1342,9 +1359,10 @@ def _parse_km_limit(text: str, q: Query) -> None:
                       r"|se niche|se neeche|ke niche|ke neeche|tak"
                       r"|पेक्षा कमी|च्या आत)", text)
     if not m:
-        # "50000 se kam chali", "50000 km se kam chalti", "50000 kam chali" —
-        # "chali" (driven) is the km cue even without the literal "km" unit.
-        m = re.search(r"(\d[\d,]{3,})\s*(k\b)?\s*(?:km|kms)?\s*"
+        # "50000 se kam chali", "40k se kam chali hui", "50000 km se kam chalti" —
+        # "chali" (driven) is the km cue even without the literal "km" unit. The
+        # number may be a k-multiplier ("40k" -> 40000) or a full figure ("50000").
+        m = re.search(r"(\d[\d,]*)\s*(k\b)?\s*(?:km|kms)?\s*"
                       r"(?:se\s*)?(?:kam|kum|km|ke\s*andar|tak)\s*"
                       r"chal(?:i|ti|a|ne)", text)
     if not m:
