@@ -219,5 +219,25 @@ class TestYearFloorCombinesWithPrice(unittest.TestCase):
         self.assertIsNone(q.year_min)
 
 
+class TestKmChaliAndPriceBand(unittest.TestCase):
+    """Filter-audit regression: 'chali' (driven) km cue, and price BANDS."""
+
+    def test_chali_is_km_not_price(self):
+        q = qp.parse("50000 se kam chali")
+        self.assertEqual(q.km_max, 50000)
+        self.assertIsNone(q.price_max)      # NOT read as ₹50,000
+        self.assertIsNone(q.price_min)
+
+    def test_price_band_sets_both_bounds(self):
+        for text in ("between 4 and 6 lakh", "4 se 6 lakh", "4 to 6 lakh", "4-6 lakh"):
+            q = qp.parse(text)
+            self.assertEqual((q.price_min, q.price_max), (400000, 600000), text)
+
+    def test_single_price_still_ceiling(self):
+        q = qp.parse("under 5 lakh")
+        self.assertEqual(q.price_max, 500000)
+        self.assertIsNone(q.price_min)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

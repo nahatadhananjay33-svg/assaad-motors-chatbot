@@ -1482,28 +1482,21 @@ class ChatService:
             _new_class = rr.query.category is not None or rr.query.seats is not None
             _base_class = (getattr(base, "category", None) is not None
                            or getattr(base, "seats", None) is not None)
-            # A bare browse naming a PRIMARY dimension (fuel/transmission/colour/
-            # category/seats) shows ALL matching cars unless the customer explicitly
-            # narrows ("only/sirf/isme se"). Fixes "cng cars" -> "automatic" returning
-            # 3 cng-automatics instead of all 56 automatics. Pure add-on refinements
-            # (budget / km / owner) are NOT primary dimensions and still narrow.
-            # ...but ONLY when the base is a pure FILTER browse. If a specific model/
-            # make/car is pinned ("Show me Ertiga" -> "automatic wali?"), keep the
-            # variant-of-that-model behaviour (the automatic Ertiga), handled below.
-            _base_pinned = bool(getattr(base, "model", None) or getattr(base, "make", None)
+            # UNIVERSAL RULE (owner's decision): until a specific CAR is pinned — a
+            # model, make, or registration is in context — EVERY filter query is a
+            # FRESH browse showing ALL matching cars, never an implicit multi-turn
+            # refinement of the previous browse. "Maruti cars" -> "5000 km se kam"
+            # must show ALL low-km cars, not the low-km Marutis. The ONLY things that
+            # keep the previous context are (a) an explicit narrow ("sirf/only/isme
+            # se"), or (b) a pinned specific car/MODEL (handled in the branches
+            # below, e.g. "Show me Ertiga" -> "automatic wali?" = the automatic
+            # Ertiga). A bare MAKE/company browse ("Maruti cars") does NOT pin — the
+            # owner's rule: "Maruti cars" then "50000 se kam chali" shows ALL low-km
+            # cars, not the low-km Marutis. Only a MODEL / registration pins.
+            _base_pinned = bool(getattr(base, "model", None)
                                 or getattr(base, "registration", None)
                                 or getattr(base, "reg_partial", None))
-            _primary_browse = (rr.query.fuel is not None or rr.query.transmission is not None
-                               or rr.query.color is not None or rr.query.category is not None
-                               or rr.query.seats is not None
-                               # price / km / owner bare browses are ALSO fresh — "gold
-                               # cars" then "5 lakh ke andar" must show ALL cars under 5
-                               # lakh, not just the gold ones under 5 lakh.
-                               or rr.query.price_max is not None or rr.query.price_min is not None
-                               or rr.query.km_max is not None
-                               or rr.query.ownership_exact is not None
-                               or rr.query.ownership_max is not None)
-            if _has_browse_cue(message) or (_primary_browse and not _base_pinned
+            if _has_browse_cue(message) or (not _base_pinned
                                             and not _is_explicit_narrow(message)):
                 # Phase 12K: an explicit "X dikhao" is a FRESH browse — show ALL
                 # matching cars, never carry over the previous search's filters.

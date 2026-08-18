@@ -1342,6 +1342,12 @@ def _parse_km_limit(text: str, q: Query) -> None:
                       r"|se niche|se neeche|ke niche|ke neeche|tak"
                       r"|पेक्षा कमी|च्या आत)", text)
     if not m:
+        # "50000 se kam chali", "50000 km se kam chalti", "50000 kam chali" —
+        # "chali" (driven) is the km cue even without the literal "km" unit.
+        m = re.search(r"(\d[\d,]{3,})\s*(k\b)?\s*(?:km|kms)?\s*"
+                      r"(?:se\s*)?(?:kam|kum|km|ke\s*andar|tak)\s*"
+                      r"chal(?:i|ti|a|ne)", text)
+    if not m:
         return
     n = int(m.group(1).replace(",", ""))
     if m.group(2):                     # "20k km" → 20,000
@@ -1362,6 +1368,24 @@ def _parse_price(text: str, q: Query) -> None:
     _FLOOR_WORDS = ("upar", "above", "over", "se zyada", "se upar",
                     "minimum", "more than", "plus", "se jyada",
                     "पेक्षा जास्त", "जास्त", "वर", "से ज्यादा")
+
+    # ── price BAND first: "between 4 and 6 lakh", "4 to 6 lakh", "4 se 6 lakh",
+    #    "4-6 lakh" — sets BOTH price_min and price_max. Without this only the
+    #    upper "6 lakh" was captured and the "4" floor was silently dropped, so
+    #    "between 4 and 6 lakh" leaked every car under 6 lakh (incl. ₹0.59L). ──
+    # Two bounds need a REAL separator between them — an explicit connector or
+    # whitespace ("4-6 lakh" normalises to "4 6 lakh"). Without the mandatory gap a
+    # single "10 lakh" split into 1|0 and became ₹1 lakh. Bounds capped to 1-2
+    # digits so a 4-digit year/plate is never eaten.
+    _band = re.search(r"(\d{1,2}(?:\.\d+)?)"
+                      r"(?:\s*(?:se|to|-|–|aur|and)\s*|\s+)"
+                      r"(\d{1,2}(?:\.\d+)?)\s*(?:lakh|lac|lakhs)\b", text)
+    if _band:
+        _a = int(float(_band.group(1)) * 100_000)
+        _b = int(float(_band.group(2)) * 100_000)
+        q.price_min, q.price_max = min(_a, _b), max(_a, _b)
+        q.intents.add("price")
+        return
 
     # "<n> lakh / lac / lakhs" — e.g. "8 lakh", "10 lakhs", "12.5 lac"
     # (broken-Hindi "lak"/"lacs" already normalized to "lakh" by normalize_typos)
@@ -1454,10 +1478,12 @@ def _parse_price(text: str, q: Query) -> None:
             value = int(m.group(1))
             if not (50_000 <= value <= 50_000_000):
                 continue          # outside any believable used-car price
-            after = text[m.end():m.end() + 16]
+            after = text[m.end():m.end() + 20]
             if re.match(r"\s*(k\b|km|kms|kilo|kilometers?|kilometres?|thousand|"
                         r"hazaar|seater|seat|log)", after):
                 continue          # "under 60000 km" is a distance ceiling, not money
+            if re.search(r"chal(?:i|ti|a|ne)", after):
+                continue          # "50000 se kam chali" = driven km, not price
             window = text[max(0, m.start() - 24): m.end() + 16]
             if any(w in window for w in _CEIL_WORDS):
                 q.price_max = value

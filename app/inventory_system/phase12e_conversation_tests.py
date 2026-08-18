@@ -115,6 +115,22 @@ class TestConversationFlows(unittest.TestCase):
         self.assertEqual(r2.filters.get("transmission"), "Automatic")
         self.assertEqual(r2.filters.get("fuel"), "Petrol")
 
+    def test_make_browse_does_not_pin(self):
+        """Owner's universal rule: a MAKE/company browse does NOT pin — the next
+        filter is a fresh browse. 'maruti cars' then 'automatic' shows ALL
+        automatics, not maruti automatics. Only a MODEL/registration pins."""
+        sid = "mk"
+        self._h("maruti cars", sid)
+        r = self._h("automatic", sid)
+        self.assertEqual(r.filters.get("transmission"), "Automatic")
+        self.assertIsNone(r.filters.get("make"))         # maruti did NOT carry over
+        # a MODEL still pins -> variant of that model
+        sid2 = "mdl"
+        self._h("Show me Ertiga", sid2)
+        r2 = self._h("automatic wali?", sid2)
+        self.assertEqual(r2.filters.get("model"), "Ertiga")
+        self.assertEqual(r2.filters.get("transmission"), "Automatic")
+
     def test_bare_price_after_browse_is_fresh(self):
         """A bare price/owner browse after a colour browse is ALSO fresh: 'gold
         cars' then '5 lakh ke andar' shows ALL cars under 5 lakh, not gold ones."""
