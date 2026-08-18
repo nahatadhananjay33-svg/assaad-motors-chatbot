@@ -115,6 +115,26 @@ class TestConversationFlows(unittest.TestCase):
         self.assertEqual(r2.filters.get("transmission"), "Automatic")
         self.assertEqual(r2.filters.get("fuel"), "Petrol")
 
+    def test_single_result_does_not_hijack_next_filter_browse(self):
+        """A browse returning ONE car must not pin it so the NEXT multi-filter
+        browse answers about that car. '7 seater diesel automatic' (1 car) then
+        'white automatic petrol first owner' must run a fresh browse (return the
+        white petrol match), not the pinned blue diesel car."""
+        sid = "hijack"
+        r1 = self._h("7 seater diesel automatic", sid)
+        self.assertEqual(r1.count, 1)
+        pinned = r1.vehicles[0]["registration_no"]
+        r2 = self._h("white automatic petrol first owner", sid)
+        for v in r2.vehicles:                       # every card must match the filters
+            self.assertEqual(v["color"], "White")
+            self.assertEqual(v["fuel"], "Petrol")
+            self.assertEqual(v["transmission"], "Automatic")
+            self.assertNotEqual(v["registration_no"], pinned)
+        # price ceiling must not be dropped for the pinned car
+        r3 = self._h("diesel automatic 7 seater under 10 lakh first owner", sid)
+        for v in r3.vehicles:
+            self.assertTrue(v["price_lakh"] is None or v["price_lakh"] <= 10.0)
+
     def test_make_browse_does_not_pin(self):
         """Owner's universal rule: a MAKE/company browse does NOT pin — the next
         filter is a fresh browse. 'maruti cars' then 'automatic' shows ALL

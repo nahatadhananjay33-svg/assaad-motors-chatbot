@@ -923,7 +923,21 @@ class ChatService:
             # full registration, so it must NOT reuse the remembered vehicle.
             names_new_vehicle = bool(q_check.model or q_check.make
                                      or q_check.registration or q_check.reg_partial)
-            if not names_new_vehicle and _is_attr_followup(message, q_check):
+            # Owner's universal rule: a query that carries concrete BROWSE filters
+            # (colour / fuel / transmission / seats / category / price / km) is a
+            # FRESH browse, never a follow-up about a pinned single-result car —
+            # even if it also mentions an attribute like "first owner". Without
+            # this, "7 seater diesel automatic" (1 car -> pinned) then "white petrol
+            # automatic first owner" reused the pinned car's reg and returned that
+            # blue diesel Safari instead of the white petrol match.
+            _has_browse_filters = bool(
+                q_check.fuel or q_check.transmission or q_check.color
+                or q_check.category or q_check.seats is not None
+                or q_check.price_max is not None or q_check.price_min is not None
+                or q_check.km_max is not None
+                or q_check.year_min is not None or q_check.year_exact is not None)
+            if (not names_new_vehicle and not _has_browse_filters
+                    and _is_attr_followup(message, q_check)):
                 token = self._followup_token(session_id)
                 if token:
                     effective_message = f"{message} {token}"
