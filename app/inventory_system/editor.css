@@ -1,0 +1,96 @@
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 13px; color: #1f2328; background: #f5f6f7;
+}
+body { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* ── toolbar ───────────────────────────────────────────── */
+#toolbar {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  padding: 8px 12px; background: #217346; color: #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,.25); z-index: 30;
+}
+.tb-group { display: flex; align-items: center; gap: 6px; }
+.tb-group.grow { flex: 1 1 260px; min-width: 200px; }
+.tb-label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; opacity: .85; }
+#toolbar select, #toolbar input, #toolbar button { font-size: 13px; }
+#toolbar select {
+  padding: 4px 6px; border-radius: 4px; border: 1px solid #17603a; background: #fff; color: #1f2328;
+}
+.name-box {
+  width: 90px; padding: 5px 8px; border: 1px solid #17603a; border-radius: 4px;
+  font-weight: 600; text-transform: uppercase; text-align: center;
+}
+.value-bar {
+  width: 100%; padding: 5px 8px; border: 1px solid #17603a; border-radius: 4px;
+  font-family: Consolas, "Courier New", monospace;
+}
+.save-btn {
+  padding: 6px 18px; background: #fff; color: #217346; border: none; border-radius: 4px;
+  font-weight: 700; letter-spacing: .05em; cursor: pointer;
+}
+.save-btn:hover { background: #eafff2; }
+.save-btn:disabled { opacity: .5; cursor: default; }
+.status { font-size: 12px; min-width: 120px; }
+.ro-badge {
+  background: #b45309; color: #fff; font-size: 10px; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 3px; letter-spacing: .05em;
+}
+
+/* ── grid ──────────────────────────────────────────────── */
+#gridWrap { position: relative; flex: 1 1 auto; overflow: hidden; }
+#gridScroll { position: absolute; inset: 0; overflow: auto; background: #fff; }
+
+table#grid { border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+#grid td, #grid th {
+  border-right: 1px solid #e1e3e6; border-bottom: 1px solid #e1e3e6;
+  padding: 0 6px; height: 22px; line-height: 22px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  width: 110px; max-width: 110px; min-width: 110px;
+  background: #fff; font-variant-numeric: tabular-nums;
+}
+
+/* corner + headers */
+#grid th.colhead {
+  position: sticky; top: 0; z-index: 20;
+  background: #f0f1f3; text-align: center; font-weight: 600; color: #57606a;
+  border-bottom: 1px solid #c9ccd1;
+}
+#grid th.rowhead {
+  position: sticky; left: 0; z-index: 15;
+  width: 56px; min-width: 56px; max-width: 56px;
+  background: #f0f1f3; text-align: center; font-weight: 600; color: #57606a;
+  border-right: 1px solid #c9ccd1;
+}
+#grid th.corner {
+  position: sticky; top: 0; left: 0; z-index: 25;
+  width: 56px; min-width: 56px; max-width: 56px;
+  background: #e6e8ea; border-right: 1px solid #c9ccd1; border-bottom: 1px solid #c9ccd1;
+}
+
+/* frozen data columns (sticky left, offset set inline by JS) */
+#grid td.frzcol, #grid th.frzcol {
+  position: sticky; z-index: 10; background: #fbfcfd;
+}
+#grid th.colhead.frzcol { z-index: 22; }
+/* frozen data rows (sticky top, offset set inline by JS) */
+#grid tr.frzrow td, #grid tr.frzrow th.rowhead {
+  position: sticky; z-index: 12; background: #fbfcfd;
+}
+#grid tr.frzrow th.rowhead { z-index: 18; }
+#grid td.frzcell {   /* intersection of frozen row + frozen col */
+  z-index: 16 !important; background: #f3f6f4 !important;
+}
+
+/* selection */
+#grid td.active { outline: 2px solid #217346; outline-offset: -2px; z-index: 8; }
+#grid td.readonly-cell { background: #faf7f2; color: #6b5b3e; }
+
+/* floating cell editor */
+#cellEditor {
+  position: absolute; z-index: 40; border: 2px solid #217346;
+  padding: 0 5px; height: 22px; line-height: 22px; font: inherit;
+  outline: none; background: #fff;
+}

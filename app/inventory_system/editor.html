@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inventory Excel Editor</title>
+  <link rel="stylesheet" href="/editor.css" />
+</head>
+<body>
+  <div id="toolbar">
+    <div class="tb-group">
+      <label class="tb-label">Sheet</label>
+      <select id="sheetSelect"></select>
+      <span id="roLabel" class="ro-badge" style="display:none;">read-only</span>
+    </div>
+
+    <div class="tb-group">
+      <label class="tb-label">Name</label>
+      <input id="nameBox" class="name-box" spellcheck="false" autocomplete="off" />
+    </div>
+
+    <div class="tb-group grow">
+      <label class="tb-label">Value</label>
+      <input id="valueBar" class="value-bar" spellcheck="false" autocomplete="off" />
+    </div>
+
+    <div class="tb-group">
+      <label class="tb-label">Freeze rows</label>
+      <select id="freezeRows">
+        <option>0</option><option>1</option><option>2</option><option>3</option>
+      </select>
+      <label class="tb-label">cols</label>
+      <select id="freezeCols">
+        <option>0</option><option>1</option><option>2</option><option>3</option><option>4</option>
+      </select>
+    </div>
+
+    <div class="tb-group">
+      <button id="saveBtn" class="save-btn">SAVE</button>
+      <span id="status" class="status"></span>
+    </div>
+  </div>
+
+  <div id="gridWrap">
+    <div id="gridScroll">
+      <table id="grid"></table>
+    </div>
+    <input id="cellEditor" spellcheck="false" autocomplete="off" style="display:none;" />
+  </div>
+
+  <script src="/editor.js"></script>
+</body>
+</html>
