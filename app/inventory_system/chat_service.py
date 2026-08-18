@@ -1495,7 +1495,14 @@ class ChatService:
                                 or getattr(base, "reg_partial", None))
             _primary_browse = (rr.query.fuel is not None or rr.query.transmission is not None
                                or rr.query.color is not None or rr.query.category is not None
-                               or rr.query.seats is not None)
+                               or rr.query.seats is not None
+                               # price / km / owner bare browses are ALSO fresh — "gold
+                               # cars" then "5 lakh ke andar" must show ALL cars under 5
+                               # lakh, not just the gold ones under 5 lakh.
+                               or rr.query.price_max is not None or rr.query.price_min is not None
+                               or rr.query.km_max is not None
+                               or rr.query.ownership_exact is not None
+                               or rr.query.ownership_max is not None)
             if _has_browse_cue(message) or (_primary_browse and not _base_pinned
                                             and not _is_explicit_narrow(message)):
                 # Phase 12K: an explicit "X dikhao" is a FRESH browse — show ALL

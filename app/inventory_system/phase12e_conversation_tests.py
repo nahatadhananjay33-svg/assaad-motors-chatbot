@@ -115,6 +115,23 @@ class TestConversationFlows(unittest.TestCase):
         self.assertEqual(r2.filters.get("transmission"), "Automatic")
         self.assertEqual(r2.filters.get("fuel"), "Petrol")
 
+    def test_bare_price_after_browse_is_fresh(self):
+        """A bare price/owner browse after a colour browse is ALSO fresh: 'gold
+        cars' then '5 lakh ke andar' shows ALL cars under 5 lakh, not gold ones."""
+        sid = "pfresh"
+        self._h("gold cars", sid)
+        r = self._h("5 lakh ke andar", sid)
+        self.assertEqual(r.filters.get("price_max"), 500000)
+        self.assertIsNone(r.filters.get("color"))        # gold did NOT carry over
+        std = self._h("5 lakh ke andar", "pfresh_std")
+        self.assertEqual(r.count, std.count)
+        # explicit narrow keeps the class
+        sid2 = "pnarrow"
+        self._h("suv dikhao", sid2)
+        r2 = self._h("sirf 5 lakh ke andar", sid2)
+        self.assertEqual(r2.filters.get("category"), "SUV")
+        self.assertEqual(r2.filters.get("price_max"), 500000)
+
     def test_step9_sequence(self):
         sid = "s9"
         r = self._h("Show me Ertiga", sid)
