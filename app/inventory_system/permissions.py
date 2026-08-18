@@ -79,8 +79,10 @@ PATH_PERMISSIONS: Dict[str, str] = {
     "/admin/inventory/restore_car": "inventory.edit",
     "/admin/inventory/duplicate_audit": "inventory.view",
     "/admin/owner/status": "owner.view",
+    "/admin/owner/validate": "inventory.view",       # read-only integrity check
     "/admin/owner/upload": "excel.upload",
     "/admin/owner/rollback": "excel.rollback",
+    "/admin/owner/restore_latest": "excel.rollback",   # undo last edit (owner-only)
     "/admin/owner/delete_backup": "excel.delete_backup",
     "/admin/owner/download": "excel.download",       # owner-only (has "*")
     # Customer conversation log — read-only view + export. Owner-only: no role

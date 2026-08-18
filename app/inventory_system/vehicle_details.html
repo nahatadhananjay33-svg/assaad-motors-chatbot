@@ -196,11 +196,11 @@ const DEF={
 };
 const SECTION_ORDER=["Vehicle Basics","Pricing","Ownership","Registration","Insurance","Engine",
  "Transmission","Exterior","Interior","Comfort","Infotainment","Safety","Accessories",
- "Mechanical Condition","Documents","Keys","Warranty","Finance","EV","Remarks","Other Information"];
+ "Mechanical Condition","Documents","Keys","Warranty","Finance","EV","Media Links","Remarks","Other Information"];
 const ICON={"Vehicle Basics":"🚗","Pricing":"💰","Ownership":"👤","Registration":"📋","Insurance":"🛡️",
  "Engine":"⚙️","Transmission":"🔧","Exterior":"✨","Interior":"🪑","Comfort":"❄️","Infotainment":"📱",
  "Safety":"🛟","Accessories":"🧰","Mechanical Condition":"🔩","Documents":"📄","Keys":"🔑","Warranty":"✅",
- "Finance":"🏦","EV":"🔋","Remarks":"📝","Other Information":"➕"};
+ "Finance":"🏦","EV":"🔋","Media Links":"🔗","Remarks":"📝","Other Information":"➕"};
 const SKIP=new Set(["Stock No","Sr No","Reg Last 4","STATUS","LAST_UPDATED","Photo Count","Video Count"]);
 const REQUIRED=new Set(["Model","Year","Fuel Type","Transmission","Owners","KM Driven","Rate (Rs)","Colour","RC Status"]);
 const RECOMMENDED=new Set(["Company / Make","RTO","Insurance Type","Accident Free","Body Condition","Airbags","Best Features","Service History Available","Variant",
@@ -265,10 +265,14 @@ function render(){
     const id=f.header||f.label; if(SKIP.has(id)||SKIP.has(f.label)) return;
     if(f.col===14) return;                              // CAR NUMB handled separately
     const h=(f.header||"").toUpperCase()+" "+(f.label||"").toUpperCase();
-    if(/PHOTO|VIDEO|INSTAGRAM|YOUTUBE|EXTERIOR|INTERIOR|MEDIA|URL|FOLDER/.test(h)) return;
-    const d=defOf(f);
-    const secName=d?d[0]:"Other Information";
-    const ctrl=d?d[1]:(f.type==="number"?"number":"text");
+    // Instagram / YouTube LINK slots (backend-flagged is_link) are editable here as
+    // plain URL text inputs, grouped under "Media Links". Photos / videos / mirror /
+    // folder columns stay OUT of the field editor (managed via the Media panel).
+    const isLink=!!f.is_link;
+    if(!isLink && /PHOTO|VIDEO|INSTAGRAM|YOUTUBE|EXTERIOR|INTERIOR|MEDIA|URL|FOLDER/.test(h)) return;
+    const d=isLink?null:defOf(f);
+    const secName=isLink?"Media Links":(d?d[0]:"Other Information");
+    const ctrl=isLink?"text":(d?d[1]:(f.type==="number"?"number":"text"));
     const opts=d?d[2]:null; const canon=(d&&(DEF[f.header]?f.header:f.label))||f.label;
     buckets[secName].push({f,ctrl,opts,name:canon,label:f.label});
   });

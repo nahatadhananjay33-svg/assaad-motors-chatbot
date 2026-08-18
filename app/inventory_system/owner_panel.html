@@ -47,6 +47,28 @@
   <button id="connectBtn" style="display:none;"></button>
   <div id="denied" style="display:none;"></div>
 
+  <!-- Inventory Excel — one place to open/edit/validate/refresh the live server Excel -->
+  <div class="card" id="invExcelCard">
+    <h2>Inventory Excel</h2>
+    <p class="muted" style="margin-top:0;">Edit your live inventory directly on the server — open it,
+    change any car's details or media, and the chatbot updates automatically. No download/upload needed.</p>
+    <div id="invStatus" style="display:flex; flex-wrap:wrap; gap:10px 22px; margin:6px 0 14px; font-size:15px;">
+      <span><b id="invLoaded">—</b></span>
+      <span class="muted">Cars: <b id="invCars">—</b></span>
+      <span class="muted">Models: <b id="invModels">—</b></span>
+      <span class="muted">Last updated: <b id="invUpdated">—</b></span>
+    </div>
+    <div style="display:flex; flex-wrap:wrap; gap:10px;">
+      <button id="openInvBtn">✏️ Open Inventory Excel</button>
+      <button id="openMediaBtn" class="grey">🖼️ Manage Photos &amp; Links</button>
+      <button id="dlInvBtn" class="grey">⬇ Download Current Excel</button>
+      <button id="validateInvBtn" class="grey">✓ Validate</button>
+      <button id="refreshInvBtn" class="grey">↻ Refresh Inventory</button>
+      <button id="restoreInvBtn" class="grey">⟲ Restore Previous Version</button>
+    </div>
+    <div id="invMsg" style="margin-top:12px; padding:10px 14px; border-radius:8px; font-size:15px; display:none;"></div>
+  </div>
+
   <div class="card">
     <h2>Current Live Excel <span class="tag live">LIVE</span></h2>
     <div class="row"><span>File name</span><b id="liveName">—</b></div>
@@ -200,6 +222,8 @@
     });
     // Customer Conversations is Owner-only (backend enforces chatlogs.view too).
     if ($("convCard")) $("convCard").style.display = isOwner() ? "" : "none";
+    // Inventory Excel edit section is Owner-only (backend still enforces each action).
+    if ($("invExcelCard")) $("invExcelCard").style.display = isOwner() ? "" : "none";
     return true;
   }
   function loadPerms() {
@@ -598,6 +622,74 @@
   });
   $("convDownload").onclick = downloadConversations;
 
+  // ── Inventory Excel section (open/edit/validate/refresh/download/restore) ────
+  function setInvMsg(html, cls) {
+    var e = $("invMsg"); if (!e) return;
+    e.style.display = "block"; e.innerHTML = html;
+    e.style.background = cls === "ok" ? "#e7f6ec" : cls === "err" ? "#fdeaea" : "#fff4ce";
+    e.style.color = cls === "ok" ? "#0a7d33" : cls === "err" ? "#a3271f" : "#5c4813";
+  }
+  function loadInventoryExcel() {
+    if (!isOwner()) return;
+    fetch(baseUrl() + "/admin/inventory_status", { headers: headers() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var n = (d.inventory_count != null) ? d.inventory_count : null;
+        $("invCars").textContent = (n != null) ? n : "—";
+        $("invUpdated").textContent = d.last_updated ? _localFmt(d.last_updated) : "—";
+        var loaded = n && n > 0;
+        $("invLoaded").textContent = loaded ? "✓ Inventory loaded" : "⚠ Inventory empty";
+        $("invLoaded").style.color = loaded ? "#0a7d33" : "#c0392b";
+      }).catch(function () {});
+    fetch(baseUrl() + "/admin/inventory/dashboard", { headers: headers() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var m = {}; (d.vehicles || []).forEach(function (v) { if (v.model) m[String(v.model).toLowerCase()] = 1; });
+        $("invModels").textContent = Object.keys(m).length || "—";
+      }).catch(function () {});
+  }
+  function validateInventory() {
+    setInvMsg("Validating current Excel…", "info");
+    fetch(baseUrl() + "/admin/owner/validate", { headers: headers() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "ok") {
+          var w = (d.warnings && d.warnings.length) ? " — note: " + d.warnings.map(esc).join("; ") : "";
+          setInvMsg("✓ Valid — " + (d.vehicles_loaded != null ? d.vehicles_loaded + " cars load cleanly" : "workbook OK") + w, "ok");
+        } else if (d.status === "invalid") {
+          setInvMsg("✗ Invalid Excel: " + (d.errors || []).map(esc).join("  •  ") + "  (inventory NOT changed)", "err");
+        } else { setInvMsg("✗ " + esc(d.detail || "Validation failed."), "err"); }
+      }).catch(function (e) { setInvMsg("Network problem: " + esc(e.message), "err"); });
+  }
+  function refreshInventory() {
+    setInvMsg("Refreshing inventory…", "info");
+    fetch(baseUrl() + "/admin/refresh_inventory", { method: "POST", headers: jheaders() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var n = (d.inventory_count != null) ? d.inventory_count : (d.count != null ? d.count : "?");
+        setInvMsg("✓ Inventory refreshed — " + n + " cars live. The chatbot is using the latest data.", "ok");
+        loadInventoryExcel();
+      }).catch(function (e) { setInvMsg("Network problem: " + esc(e.message), "err"); });
+  }
+  $("openInvBtn").onclick = function () { window.open("http://localhost:8010/editor", "_blank"); };
+  $("openMediaBtn").onclick = function () { location.href = "media_admin.html"; };
+  $("dlInvBtn").onclick = function () { downloadExcel("live"); };
+  $("validateInvBtn").onclick = validateInventory;
+  $("refreshInvBtn").onclick = refreshInventory;
+  function restoreLatest() {
+    if (!confirm("Restore the most recent previous version?\n\nThis undoes your last change and the chatbot will use the restored inventory.")) return;
+    setInvMsg("Restoring previous version…", "info");
+    fetch(baseUrl() + "/admin/owner/restore_latest", { method: "POST", headers: jheaders() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.status === "ok") {
+          setInvMsg("✓ " + esc(d.message) + " (" + (d.vehicles_loaded != null ? d.vehicles_loaded + " cars" : "") + ")", "ok");
+          loadInventoryExcel(); load();
+        } else { setInvMsg("✗ " + esc(d.detail || "Could not restore."), "err"); }
+      }).catch(function (e) { setInvMsg("Network problem: " + esc(e.message), "err"); });
+  }
+  $("restoreInvBtn").onclick = restoreLatest;
+
   var _origLoad = load;
   load = function () {
     remember();
@@ -605,6 +697,7 @@
       if (allowed === false) return;               // Access Denied — nothing loads
       _origLoad(); loadUsers(); renderAuditFilters(); loadAudit();
       convRangeChips(); loadConversations();
+      loadInventoryExcel();
     });
   };
 

@@ -482,13 +482,19 @@ class MediaAdmin:
                 except Exception:
                     pass                                       # storage best-effort; Excel still moves
 
-                # 2) snapshot the row, clearing media + mirror cells (links now dangle)
+                # 2) snapshot the row. Clear ONLY the Supabase-backed photo/video
+                #    slots (their files were just deleted, so those URLs would
+                #    dangle) + the photo/video mirror columns. PRESERVE the external
+                #    Instagram/YouTube URLs so they remain in the SOLD_CARS archive
+                #    (they are not Supabase objects and are not deleted).
                 max_col = ws.max_column
                 values = [ws.cell(row, c).value for c in range(1, max_col + 1)]
-                media_cols = {c for cols in layout.slots.values() for c in cols}
-                mirror_cols = {layout.mgmt[h.upper()] for h in
-                               (COL_PHOTO_URLS, COL_VIDEO_URLS, COL_YOUTUBE, COL_INSTAGRAM)}
-                for c in (media_cols | mirror_cols):
+                pv_slots = {c for mtype, cols in layout.slots.items() for c in cols
+                            if mtype in (MediaType.EXTERIOR_PHOTO,
+                                         MediaType.INTERIOR_PHOTO, MediaType.VIDEO)}
+                pv_mirror = {layout.mgmt[h.upper()] for h in (COL_PHOTO_URLS, COL_VIDEO_URLS)
+                             if h.upper() in layout.mgmt}
+                for c in (pv_slots | pv_mirror):
                     if c - 1 < len(values):
                         values[c - 1] = None
                 values[layout.mgmt[COL_STATUS.upper()] - 1] = STATUS_SOLD

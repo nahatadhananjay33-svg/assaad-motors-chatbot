@@ -296,6 +296,13 @@ def route(method: str, path: str, body: bytes, service: ChatService,
             _log(ACCESS_LOG, logging.ERROR, "owner_status_error", error=str(e))
             return 500, {"error": "owner_status_failed", "detail": str(e)}
 
+    if method == "GET" and path == "/admin/owner/validate":
+        try:
+            return owner_panel.handle_validate(service)
+        except Exception as e:
+            _log(ACCESS_LOG, logging.ERROR, "owner_validate_error", error=str(e))
+            return 500, {"error": "owner_validate_failed", "detail": str(e)}
+
     if method == "POST" and path == "/admin/owner/upload":
         try:
             return owner_panel.handle_upload(service, body, content_type)
@@ -309,6 +316,13 @@ def route(method: str, path: str, body: bytes, service: ChatService,
         except Exception as e:
             _log(ACCESS_LOG, logging.ERROR, "owner_rollback_error", error=str(e))
             return 500, {"error": "owner_rollback_failed", "detail": str(e)}
+
+    if method == "POST" and path == "/admin/owner/restore_latest":
+        try:
+            return owner_panel.handle_restore_latest(service)
+        except Exception as e:
+            _log(ACCESS_LOG, logging.ERROR, "owner_restore_latest_error", error=str(e))
+            return 500, {"error": "owner_restore_latest_failed", "detail": str(e)}
 
     if method == "POST" and path == "/admin/owner/delete_backup":
         try:
@@ -425,6 +439,7 @@ def route(method: str, path: str, body: bytes, service: ChatService,
                 "/admin/inventory/restore_car",
                 "/admin/owner/status", "/admin/owner/upload",
                 "/admin/owner/rollback", "/admin/owner/delete_backup",
+                "/admin/owner/validate", "/admin/owner/restore_latest",
                 "/admin/owner/download", "/admin/owner/chat_logs",
                 "/admin/owner/chat_logs/detail", "/admin/owner/chat_logs/export",
                 "/admin/users/list", "/admin/users/create", "/admin/users/update",

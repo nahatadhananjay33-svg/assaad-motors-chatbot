@@ -85,6 +85,11 @@ GROUP_ORDER = ["Vehicle Information", "Pricing", "Vehicle Details",
 
 _NUM_RE = re.compile(r"^-?\d+(?:,\d{3})*(?:\.\d+)?$")
 
+# Owner-editable link slots (Instagram/YouTube) accept only http(s) URLs — the same
+# rule the media loader uses, so a saved value is guaranteed to reach the chatbot.
+_URL_OK = re.compile(r"^https?://", re.IGNORECASE)
+_LINK_LABEL = {"INSTAGRAM": "Instagram", "YOUTUBE": "YouTube"}
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # small helpers
@@ -145,6 +150,37 @@ def _backup_dir(xlsx_path: str) -> str:
     return os.path.join(os.path.dirname(os.path.abspath(xlsx_path)), "inventory_backups")
 
 
+def _backup_keep() -> int:
+    """How many recent timestamped backups to retain (configurable). 0/negative
+    disables pruning. Default 30 — enough to roll back several edits without
+    letting the backup folder grow without bound."""
+    try:
+        return int(os.getenv("INVENTORY_BACKUP_KEEP", "") or 30)
+    except ValueError:
+        return 30
+
+
+def _prune_backups(xlsx_path: str) -> None:
+    """Keep only the most recent N backups of this workbook in inventory_backups/.
+    The backup suffix is a zero-padded, sortable UTC stamp, so a lexical sort is
+    chronological. Fully guarded — backup hygiene must never break an edit."""
+    try:
+        keep = _backup_keep()
+        bdir = _backup_dir(xlsx_path)
+        if keep <= 0 or not os.path.isdir(bdir):
+            return
+        import glob
+        base = os.path.basename(xlsx_path)
+        files = sorted(glob.glob(os.path.join(bdir, base + ".*.bak")))
+        for old in files[:-keep]:
+            try:
+                os.remove(old)
+            except OSError:
+                pass
+    except Exception:
+        pass
+
+
 def _lock_path(xlsx_path: str) -> str:
     return xlsx_path + ".lock"
 
@@ -193,15 +229,22 @@ def _label_for(col: int, r2: str, r3: str, media_base: Optional[str]) -> str:
     return "Column " + openpyxl.utils.get_column_letter(col)
 
 
-def _group_and_ro(col: int, r2u: str, r3u: str, in_media: bool) -> Tuple[str, bool]:
+def _group_and_ro(col: int, r2u: str, r3u: str, in_media: bool,
+                  media_group: Optional[str] = None) -> Tuple[str, bool]:
     """Return (group, read_only) for a column, from keyword rules on the header."""
     text = (r2u + " " + r3u).strip()
     if col == CAR_COL:
         return CORE_GROUP.get(col, "Vehicle Information"), True   # identity key
-    if in_media or any(k in text for k in ("PHOTO_URLS", "VIDEO_URLS", "YOUTUBE_URL",
-                                           "INSTAGRAM_URL", "MEDIA_FOLDER",
-                                           "PHOTO COUNT", "VIDEO COUNT")):
-        return "Media", True
+    is_mirror = any(k in text for k in ("PHOTO_URLS", "VIDEO_URLS", "YOUTUBE_URL",
+                                        "INSTAGRAM_URL", "MEDIA_FOLDER",
+                                        "PHOTO COUNT", "VIDEO COUNT"))
+    if in_media or is_mirror:
+        # Instagram / YouTube LINK slots are owner-editable (plain URLs the chatbot
+        # reads straight off the row). Photo/video slots and the consolidated mirror
+        # columns stay read-only — those are managed via the Media panel / Supabase
+        # upload, which we do NOT change.
+        link_slot = (media_group in ("INSTAGRAM", "YOUTUBE")) and not is_mirror
+        return "Media", (not link_slot)
     if r2u == "STATUS" or "LAST_UPDATED" in r2u:        # exact: not "RC STATUS"
         return "Status", True
     if col in CORE_GROUP:
@@ -227,6 +270,7 @@ def _discover_fields(ws) -> List[Dict[str, Any]]:
     """Build the ordered field list from the live Excel columns."""
     fields: List[Dict[str, Any]] = []
     media_group: Optional[str] = None
+    slot_num = 0
     for c in range(1, (ws.max_column or 0) + 1):
         r2 = str(ws.cell(HEADER_ROW, c).value or "").strip()
         r3 = str(ws.cell(DESC_ROW, c).value or "").strip()
@@ -236,8 +280,12 @@ def _discover_fields(ws) -> List[Dict[str, Any]]:
         started = next((k for k in _MEDIA_TYPES if r2u.startswith(k)), None)
         if started:
             media_group = started
+            slot_num = 1
+        elif media_group is not None and is_num_slot:
+            slot_num += 1                               # continuation cell of a media run
         elif r2 and not is_num_slot:
             media_group = None                          # a named header ends media block
+            slot_num = 0
         in_media = media_group is not None and (started is not None or is_num_slot)
 
         # include a column if it has any header OR is a known core column
@@ -246,7 +294,13 @@ def _discover_fields(ws) -> List[Dict[str, Any]]:
 
         media_base = media_group.title() if media_group else None
         label = _label_for(c, r2, r3, media_base)
-        group, read_only = _group_and_ro(c, r2u, r3u, in_media)
+        group, read_only = _group_and_ro(c, r2u, r3u, in_media, media_group)
+        # Instagram / YouTube LINK slots become owner-editable here; flag them so the
+        # editor UI groups them and the save path validates their URL format.
+        is_link = (not read_only) and in_media and media_group in ("INSTAGRAM", "YOUTUBE")
+        if is_link:
+            label = "%s %d" % (_LINK_LABEL.get(media_group, media_group.title()),
+                               slot_num or 1)
         # numeric type hint from a sample data cell
         sample = ws.cell(DATA_START_ROW, c).value
         ftype = "number" if isinstance(sample, (int, float)) else "text"
@@ -254,6 +308,7 @@ def _discover_fields(ws) -> List[Dict[str, Any]]:
             "key": "c%d" % c, "col": c, "label": label, "group": group,
             "editable": not read_only, "type": ftype,
             "header": r2,          # Phase 12C: raw row-2 header (UI control mapping)
+            "is_link": is_link,    # Instagram/YouTube URL slot (owner-editable)
         })
     return fields
 
@@ -406,6 +461,25 @@ def _editable_cols(ws) -> Dict[int, bool]:
     return {f["col"]: f["editable"] for f in _discover_fields(ws)}
 
 
+def _bad_link_urls(values: Dict[str, Any], link_cols: set) -> List[str]:
+    """Return the c-keys whose value targets an Instagram/YouTube slot but is not a
+    valid http(s) URL. Blank is allowed (it clears the link). Used to reject BEFORE
+    writing, so the workbook is never partially saved with a bad link."""
+    bad: List[str] = []
+    for key, val in values.items():
+        if not key.startswith("c"):
+            continue
+        try:
+            col = int(key[1:])
+        except ValueError:
+            continue
+        if col in link_cols:
+            s = "" if val is None else str(val).strip()
+            if s and not _URL_OK.match(s):
+                bad.append(key)
+    return bad
+
+
 def handle_update_car(service: Any, body: bytes) -> Tuple[int, Dict[str, Any]]:
     payload = _parse_json(body)
     if payload is None:
@@ -428,7 +502,15 @@ def handle_update_car(service: Any, body: bytes) -> Tuple[int, Dict[str, Any]]:
             row = _find_row(ws, car_number)
             if row is None:
                 return 404, {"status": "error", "detail": "Car not found."}
-            editable = _editable_cols(ws)
+            fields = _discover_fields(ws)
+            editable = {f["col"]: f["editable"] for f in fields}
+            link_cols = {f["col"] for f in fields if f.get("is_link")}
+            bad = _bad_link_urls(values, link_cols)     # validate BEFORE any write
+            if bad:
+                return 400, {"status": "error",
+                             "detail": "Invalid link URL — use a full https:// link "
+                                       "(or leave it blank to remove).",
+                             "invalid": bad}
             for key, val in values.items():
                 if not key.startswith("c"):
                     continue
@@ -442,6 +524,7 @@ def handle_update_car(service: Any, body: bytes) -> Tuple[int, Dict[str, Any]]:
                     continue
                 ws.cell(row, col).value = _coerce(val)
             atomic_save_workbook(wb, xlsx, backup_dir=_backup_dir(xlsx))
+            _prune_backups(xlsx)
         finally:
             wb.close()
     refresh = service.refresh_inventory()
@@ -475,7 +558,15 @@ def handle_add_car(service: Any, body: bytes) -> Tuple[int, Dict[str, Any]]:
                 return 409, {"status": "error", "detail": "This vehicle already exists.",
                              "car_number": car_number, "exists": True}
             new_row = _last_data_row(ws) + 1
-            editable = _editable_cols(ws)
+            fields = _discover_fields(ws)
+            editable = {f["col"]: f["editable"] for f in fields}
+            link_cols = {f["col"] for f in fields if f.get("is_link")}
+            bad = _bad_link_urls(values, link_cols)     # validate BEFORE any write
+            if bad:
+                return 400, {"status": "error",
+                             "detail": "Invalid link URL — use a full https:// link "
+                                       "(or leave it blank).",
+                             "invalid": bad}
             for key, val in values.items():
                 if not key.startswith("c"):
                     continue
@@ -488,6 +579,7 @@ def handle_add_car(service: Any, body: bytes) -> Tuple[int, Dict[str, Any]]:
                 ws.cell(new_row, col).value = _coerce(val)
             ws.cell(new_row, CAR_COL).value = car_number    # ensure normalised reg
             atomic_save_workbook(wb, xlsx, backup_dir=_backup_dir(xlsx))
+            _prune_backups(xlsx)
         finally:
             wb.close()
     refresh = service.refresh_inventory()
@@ -539,6 +631,7 @@ def handle_restore_car(service: Any, body: bytes) -> Tuple[int, Dict[str, Any]]:
                 dnj.cell(new_row, status_c).value = "AVAILABLE"
             sold_ws.delete_rows(srow, 1)
             atomic_save_workbook(wb, xlsx, backup_dir=_backup_dir(xlsx))
+            _prune_backups(xlsx)
         finally:
             wb.close()
     refresh = service.refresh_inventory()

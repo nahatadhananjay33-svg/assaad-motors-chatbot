@@ -117,6 +117,94 @@ def handle_status(service: Any) -> Tuple[int, Dict[str, Any]]:
     return 200, {"live": live, "backup": backup}
 
 
+def handle_validate(service: Any) -> Tuple[int, Dict[str, Any]]:
+    """Validate the CURRENT live inventory Excel (read-only) and report any
+    errors/warnings — the SAME checks the upload flow runs (workbook readable,
+    DNJ sheet, CAR NUMB column, registrations present, loads to >0 cars). Never
+    modifies anything; the owner can check integrity before/without editing."""
+    p = _paths(service)
+    path = p["live"]
+    if not os.path.exists(path):
+        return 404, {"status": "error", "detail": "No live inventory Excel found."}
+    try:
+        v = validate_workbook(path)
+    except Exception as e:                                    # pragma: no cover
+        return 500, {"status": "error", "detail": f"Validation failed to run ({e})."}
+    ok = not v.get("errors")
+    return 200, {
+        "status": "ok" if ok else "invalid",
+        "valid": ok,
+        "errors": v.get("errors", []),
+        "warnings": v.get("warnings", []),
+        "vehicles_loaded": v.get("vehicles_loaded"),
+        "rows_processed": v.get("rows_processed"),
+        "file_name": os.path.basename(path),
+    }
+
+
+def handle_restore_latest(service: Any) -> Tuple[int, Dict[str, Any]]:
+    """Undo the last change: restore the most recent VALIDATED backup snapshot —
+    whichever is newest between the per-edit ``inventory_backups/`` snapshots and
+    the previous uploaded Excel — then refresh. The current live file is itself
+    snapshotted first, so a restore is reversible. Only ever touches the single
+    newest backup (no arbitrary filesystem access)."""
+    import glob
+    import shutil
+    from inventory_edit import _backup_dir, _prune_backups
+    from inventory_models import utcnow_iso
+    p = _paths(service)
+    live = p["live"]
+    if not os.path.exists(live):
+        return 404, {"status": "error", "detail": "No live inventory Excel found."}
+    candidates: list = []
+    if os.path.exists(p["backup"]):
+        candidates.append((os.path.getmtime(p["backup"]), p["backup"]))
+    bdir = _backup_dir(live)
+    if os.path.isdir(bdir):
+        for f in glob.glob(os.path.join(bdir, os.path.basename(live) + ".*.bak")):
+            candidates.append((os.path.getmtime(f), f))
+    if not candidates:
+        return 404, {"status": "error",
+                     "detail": "No previous version to restore yet."}
+    candidates.sort()
+    src = candidates[-1][1]
+    # Validate a .xlsx copy first — openpyxl refuses to open a ".bak" by extension,
+    # so validate_workbook must see a real .xlsx. Never restore a broken backup.
+    import tempfile
+    fd, probe = tempfile.mkstemp(dir=bdir, suffix=".xlsx")
+    os.close(fd)
+    try:
+        shutil.copy2(src, probe)
+        v = validate_workbook(probe)
+    finally:
+        try:
+            os.remove(probe)
+        except OSError:
+            pass
+    if v.get("errors"):
+        return 400, {"status": "rejected",
+                     "detail": "The most recent backup failed validation — not restoring.",
+                     "errors": v["errors"]}
+    try:
+        with FileLock(p["lock"]):
+            os.makedirs(bdir, exist_ok=True)
+            stamp = utcnow_iso().replace(":", "").replace("-", "").replace(".", "")
+            shutil.copy2(live, os.path.join(bdir, os.path.basename(live) + "." + stamp + ".bak"))
+            tmp = live + ".restore_tmp.xlsx"
+            shutil.copy2(src, tmp)
+            os.replace(tmp, live)                    # atomic on same volume
+            _prune_backups(live)
+    except OSError as e:
+        return 500, {"status": "error",
+                     "detail": f"Could not restore ({e}). Close the file in Excel and retry."}
+    refresh = service.refresh_inventory()
+    return 200, {"status": "ok",
+                 "message": "Previous version restored — the chatbot is using it now.",
+                 "restored_from": os.path.basename(src),
+                 "vehicles_loaded": refresh.get("inventory_count"),
+                 "refresh": refresh}
+
+
 def handle_download(service: Any, slot: str = "live") -> Tuple[int, Dict[str, Any]]:
     """Return the LIVE (or BACKUP) Excel for download, base64-encoded in JSON so
     the existing JSON response path can carry it (the browser decodes it to a real
