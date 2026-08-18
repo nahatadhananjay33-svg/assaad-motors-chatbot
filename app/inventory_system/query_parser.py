@@ -232,6 +232,10 @@ COLOR_WORDS: Dict[str, str] = {
     "beige": "Beige", "cream": "Beige", "champagne": "Beige",
     "green": "Green", "hara": "Green", "hari": "Green",
     "orange": "Orange", "narangi": "Orange",
+    "platinum": "Platinum",
+    # combined body colour (Excel code R+B). Multi-word keys must beat the bare
+    # "red"/"black" — the colour loop below matches longest-first for that.
+    "red+black": "Red+Black", "red black": "Red+Black", "red and black": "Red+Black",
     "maroon": "Maroon", "wine": "Maroon",
     "purple": "Purple", "violet": "Purple",
     "navy": "Blue", "navy blue": "Blue", "sky blue": "Blue",
@@ -928,10 +932,10 @@ def parse(utterance: str) -> Query:
         q.transmission = Transmission.MANUAL
         q.intents.add("transmission")
 
-    # ── colour (G-COLOR) ──
-    for word, color in COLOR_WORDS.items():
+    # ── colour (G-COLOR) — longest phrase first so "red black" beats "red" ──
+    for word in sorted(COLOR_WORDS, key=len, reverse=True):
         if _has(text, word):
-            q.color = color
+            q.color = COLOR_WORDS[word]
             q.intents.add("color")
             break
 
@@ -1066,22 +1070,26 @@ def parse(utterance: str) -> Query:
                 break
 
     # ── bare 4-digit model year, e.g. "2019 nexon photos" (TASK3) ──
-    if q.year_min is None and q.price_max is None and q.price_min is None:
+    # A bare EXACT year stays gated on "no price filter" so price digits are never
+    # misread as a year. But an explicit year FLOOR ("2018 se upar/ke baad/above/
+    # newer") carries an unambiguous cue that cannot be a price token, so it is
+    # allowed to COMBINE with a price filter — otherwise "under 5 lakh 2018 se
+    # upar" silently dropped the year (a requested filter must never be dropped).
+    if q.year_min is None:
+        _price_set = (q.price_max is not None or q.price_min is not None)
         m = _YEAR_EXACT_RE.search(text)
         # …unless the customer explicitly called those digits a number plate
         # ("1994 number wali gaadi"), in which case they are a registration tail,
         # not a model year — see _plate_cue_adjacent.
         if m and not _plate_cue_adjacent(text[:m.start()], text[m.end():]):
             yr = int(m.group(0))
-            # "2018 se upar / ke baad / above / newer" is a year FLOOR (>= 2018),
-            # not that exact year. The cue can sit AFTER the year ("2018 se upar")
-            # or BEFORE it ("above 2018").
             after = text[m.end():m.end() + 18]
             before = text[max(0, m.start() - 14):m.start()]
-            if _YEAR_FLOOR_RE.match(after) or _YEAR_FLOOR_BEFORE_RE.search(before):
+            _is_floor = bool(_YEAR_FLOOR_RE.match(after) or _YEAR_FLOOR_BEFORE_RE.search(before))
+            if _is_floor:
                 q.year_min = yr
                 q.intents.add("category")
-            else:
+            elif not _price_set:
                 q.year_exact = yr
 
     # ── intents: availability ──

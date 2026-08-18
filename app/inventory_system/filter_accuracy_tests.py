@@ -182,5 +182,42 @@ class TestYearLikePlateReachable(unittest.TestCase):
             self.assertIsNone(q.reg_partial)
 
 
+class TestRareColourVocabulary(unittest.TestCase):
+    """Filter-audit regression: rare Excel colours must be recognised and the
+    colour loop must match the longest phrase first (so 'red black' -> Red+Black,
+    not Red). 'platinum' and 'red+black' (R+B) were previously unrecognised."""
+
+    def test_platinum_recognised(self):
+        self.assertEqual(qp.parse("platinum cars").color, "Platinum")
+
+    def test_red_black_beats_bare_red(self):
+        self.assertEqual(qp.parse("red black cars").color, "Red+Black")
+        self.assertEqual(qp.parse("red and black car").color, "Red+Black")
+
+    def test_plain_colours_unchanged(self):
+        self.assertEqual(qp.parse("red cars").color, "Red")
+        self.assertEqual(qp.parse("black cars").color, "Black")
+        self.assertEqual(qp.parse("navy blue car").color, "Blue")
+
+
+class TestYearFloorCombinesWithPrice(unittest.TestCase):
+    """Filter-audit regression: an explicit year FLOOR must survive alongside a
+    price filter. 'under 5 lakh 2018 se upar' used to drop the year silently."""
+
+    def test_year_floor_plus_price(self):
+        q = qp.parse("under 5 lakh 2018 se upar cars")
+        self.assertEqual(q.price_max, 500000)
+        self.assertEqual(q.year_min, 2018)
+        q2 = qp.parse("2018 ke baad ki gaadi 4 lakh ke andar")
+        self.assertEqual(q2.year_min, 2018)
+        self.assertEqual(q2.price_max, 400000)
+
+    def test_bare_exact_year_still_gated_under_price(self):
+        # a bare exact year under a price stays unset (price digits never a year)
+        q = qp.parse("5 lakh ke andar cars")
+        self.assertIsNone(q.year_exact)
+        self.assertIsNone(q.year_min)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

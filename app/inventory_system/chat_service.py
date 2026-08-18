@@ -564,6 +564,20 @@ def _has_browse_cue(message: str) -> bool:
     return any(c in f" {(message or '').strip().lower()} " for c in _EXPLICIT_BROWSE_CUES)
 
 
+# Explicit "narrow within the current results" signals. Only these keep a new
+# primary-dimension filter as a REFINEMENT of the previous browse; without one, a
+# bare fuel/transmission/colour/category/seats browse is a FRESH browse showing
+# ALL matching cars (Excel-filter behaviour the owner asked for). Deliberately
+# excludes "and"/"aur" (they appear inside ordinary phrases, e.g. "red and black").
+_NARROW_CUES = (" only ", " sirf ", " isme ", " isme se ", " ismein ", " inme ",
+                " inme se ", " inmein ", " in these ", " of these ", " among these ",
+                " inhi ", " inhi me ", " sirf ", " केवल ", " इनमें ", " इनमे ")
+
+
+def _is_explicit_narrow(message: str) -> bool:
+    return any(c in f" {(message or '').strip().lower()} " for c in _NARROW_CUES)
+
+
 # ── Part G: a bare "cars dikhao" must GUIDE, not dump the whole catalogue. Only
 #    an EXPLICIT "show me all cars" opens the full book (price-ascending, capped). ─
 _ALL_CARS_CUES = (
@@ -1468,7 +1482,22 @@ class ChatService:
             _new_class = rr.query.category is not None or rr.query.seats is not None
             _base_class = (getattr(base, "category", None) is not None
                            or getattr(base, "seats", None) is not None)
-            if _has_browse_cue(message):
+            # A bare browse naming a PRIMARY dimension (fuel/transmission/colour/
+            # category/seats) shows ALL matching cars unless the customer explicitly
+            # narrows ("only/sirf/isme se"). Fixes "cng cars" -> "automatic" returning
+            # 3 cng-automatics instead of all 56 automatics. Pure add-on refinements
+            # (budget / km / owner) are NOT primary dimensions and still narrow.
+            # ...but ONLY when the base is a pure FILTER browse. If a specific model/
+            # make/car is pinned ("Show me Ertiga" -> "automatic wali?"), keep the
+            # variant-of-that-model behaviour (the automatic Ertiga), handled below.
+            _base_pinned = bool(getattr(base, "model", None) or getattr(base, "make", None)
+                                or getattr(base, "registration", None)
+                                or getattr(base, "reg_partial", None))
+            _primary_browse = (rr.query.fuel is not None or rr.query.transmission is not None
+                               or rr.query.color is not None or rr.query.category is not None
+                               or rr.query.seats is not None)
+            if _has_browse_cue(message) or (_primary_browse and not _base_pinned
+                                            and not _is_explicit_narrow(message)):
                 # Phase 12K: an explicit "X dikhao" is a FRESH browse — show ALL
                 # matching cars, never carry over the previous search's filters.
                 # After "7 seater dikhao", "automatic wali dikhao" must show ALL

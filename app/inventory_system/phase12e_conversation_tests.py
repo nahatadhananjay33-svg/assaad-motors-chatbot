@@ -96,6 +96,25 @@ class TestConversationFlows(unittest.TestCase):
     def _h(self, msg, sid):
         return self.svc.handle(msg, session_id=sid)
 
+    def test_bare_filter_after_browse_is_fresh(self):
+        """Filter-audit regression: a bare primary-dimension filter after a filter
+        browse is a FRESH browse (Excel-filter behaviour), not a narrowing of the
+        previous browse. 'cng cars' then 'automatic' must show ALL automatics, not
+        the 3 cng-automatics. Explicit 'sirf/only' still narrows."""
+        sid = "fresh1"
+        self._h("cng cars dikhao", sid)
+        r = self._h("automatic", sid)          # bare -> fresh
+        self.assertEqual(r.filters.get("transmission"), "Automatic")
+        self.assertIsNone(r.filters.get("fuel"))         # CNG did NOT carry over
+        std = self._h("automatic cars", "fresh_std")     # standalone reference
+        self.assertEqual(r.count, std.count)
+
+        sid2 = "narrow1"
+        self._h("automatic cars", sid2)
+        r2 = self._h("sirf petrol", sid2)      # explicit narrow -> merge
+        self.assertEqual(r2.filters.get("transmission"), "Automatic")
+        self.assertEqual(r2.filters.get("fuel"), "Petrol")
+
     def test_step9_sequence(self):
         sid = "s9"
         r = self._h("Show me Ertiga", sid)

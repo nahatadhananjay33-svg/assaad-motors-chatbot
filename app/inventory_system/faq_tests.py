@@ -370,5 +370,20 @@ class TestServiceIntegration(unittest.TestCase):
         self.assertEqual(c["unknown_count"], 1)
 
 
+class TestKeywordBoundary(unittest.TestCase):
+    """Filter-audit regression: FAQ keywords must not substring-match inside a
+    longer word. 'old car' once matched inside 'g|old car|s' and routed the
+    'gold cars' colour browse to the exchange FAQ."""
+
+    def test_gold_cars_is_not_exchange(self):
+        self.assertIsNone(faq_engine.detect_intent("gold cars"))
+        self.assertIsNone(faq_engine.detect_intent("gold"))
+
+    def test_exchange_keywords_still_match(self):
+        self.assertEqual(faq_engine.detect_intent("old car exchange"), "exchange")
+        self.assertEqual(faq_engine.detect_intent("purani gaadi exchange"), "exchange")
+        self.assertEqual(faq_engine.detect_intent("exchange milega?"), "exchange")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

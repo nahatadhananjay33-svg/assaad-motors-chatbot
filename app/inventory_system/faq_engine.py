@@ -339,12 +339,23 @@ class FAQResult:
     template_key: str      # the template actually used
 
 
+def _kw_in(kw: str, text: str) -> bool:
+    """Keyword membership with a LEFT word-boundary for ASCII keywords, so a
+    keyword never false-matches inside a longer word. Without this, the exchange
+    keyword 'old car' matched inside 'g|old car|s' and routed "gold cars" (a
+    colour browse) to the exchange FAQ. Devanagari / non-ASCII keywords keep the
+    plain substring test (\\b is unreliable there); the collisions are all ASCII."""
+    if kw[:1].isascii() and kw[:1].isalnum():
+        return re.search(r"(?<![a-z0-9])" + re.escape(kw), text) is not None
+    return kw in text
+
+
 def detect_intent(message: str) -> Optional[str]:
     """Return the FAQ intent or None (not an FAQ)."""
     text = (message or "").lower()
     for intent, keywords in _INTENT_TABLE:
         for kw in keywords:
-            if kw in text:
+            if _kw_in(kw, text):
                 return intent
     return None
 
