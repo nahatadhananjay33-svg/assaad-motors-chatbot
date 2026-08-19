@@ -37,8 +37,12 @@ import openpyxl
 
 # ── paths ────────────────────────────────────────────────────────────────────
 HERE = os.path.dirname(os.path.abspath(__file__))
-WORKBOOK_PATH = os.path.abspath(os.path.join(HERE, "..", "IVR_Sheet.xlsx"))
-BACKUP_DIR = os.path.abspath(os.path.join(HERE, "..", "inventory_backups"))
+# Workbook + backup locations are env-overridable so the SAME script works both
+# locally (defaults below → the repo's app/IVR_Sheet.xlsx) and inside the KVM2
+# container, where EDITOR_XLSX=/data/IVR_Sheet.xlsx points at the exact same
+# writable workbook the chatbot loads (CHAT_XLSX). No behaviour change locally.
+WORKBOOK_PATH = os.environ.get("EDITOR_XLSX") or os.path.abspath(os.path.join(HERE, "..", "IVR_Sheet.xlsx"))
+BACKUP_DIR = os.environ.get("EDITOR_BACKUP_DIR") or os.path.abspath(os.path.join(HERE, "..", "inventory_backups"))
 
 # Which sheets the editor exposes, and whether each is editable.
 # The real workbook uses "DONT TOUCH SOLD" for the sold list; we surface it under
@@ -237,14 +241,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    port = 8010
+    # Bind host is env-overridable: default 127.0.0.1 (local-only, safe) but the
+    # container sets EDITOR_HOST=0.0.0.0 so the sibling nginx container can reach
+    # it on the private docker network (the port is never published to the host).
+    host = os.environ.get("EDITOR_HOST", "127.0.0.1")
+    port = int(os.environ.get("EDITOR_PORT", "8010"))
     if len(sys.argv) > 1:
         try:
             port = int(sys.argv[1])
         except ValueError:
             pass
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"Inventory Excel editor running:  http://localhost:{port}/editor")
+    httpd = ThreadingHTTPServer((host, port), Handler)
+    print(f"Inventory Excel editor running:  http://{host}:{port}/editor")
     print(f"Workbook: {WORKBOOK_PATH}")
     try:
         httpd.serve_forever()

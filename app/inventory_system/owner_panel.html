@@ -671,7 +671,13 @@
         loadInventoryExcel();
       }).catch(function (e) { setInvMsg("Network problem: " + esc(e.message), "err"); });
   }
-  $("openInvBtn").onclick = function () { window.open("http://localhost:8010/editor", "_blank"); };
+  $("openInvBtn").onclick = function () {
+    // Local dev serves the editor on its own :8010; in production the editor is
+    // proxied same-origin at /editor (nginx). Pick the right one automatically.
+    var h = location.hostname;
+    var url = (h === "localhost" || h === "127.0.0.1") ? "http://localhost:8010/editor" : "/editor";
+    window.open(url, "_blank");
+  };
   $("openMediaBtn").onclick = function () { location.href = "media_admin.html"; };
   $("dlInvBtn").onclick = function () { downloadExcel("live"); };
   $("validateInvBtn").onclick = validateInventory;

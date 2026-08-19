@@ -27,11 +27,35 @@ services:
       - "8000"                                  # internal only; nginx reaches it
     # No host port published — never expose the app directly.
 
+  # ── Inventory Excel editor (Excel-like browser grid) ──────────────────────
+  # Reuses the SAME image as `app` (openpyxl + the editor files already baked in
+  # at /app/inventory_system). It edits the SAME workbook the chatbot uses
+  # (EDITOR_XLSX=/data/IVR_Sheet.xlsx in the shared ./data volume). Internal
+  # only — never a host port; nginx reaches it on the private network and gates
+  # it behind HTTP Basic Auth.
+  editor:
+    image: assad-motors-chat:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      - EDITOR_XLSX=/data/IVR_Sheet.xlsx
+      - EDITOR_BACKUP_DIR=/data/inventory_backups
+      - EDITOR_HOST=0.0.0.0
+      - EDITOR_PORT=8010
+    volumes:
+      - ./data:/data                            # same persistent workbook + backups
+    working_dir: /app/inventory_system
+    command: ["python", "-X", "utf8", "editor_server.py", "8010"]
+    expose:
+      - "8010"                                  # internal only; nginx reaches it
+
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
     depends_on:
       - app
+      - editor
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"
