@@ -125,6 +125,7 @@
       <a data-tab="inventory">Inventory</a>
       <a data-tab="analytics">Analytics</a>
       <a data-tab="errors">Errors</a>
+      <a data-tab="excel">Excel Edits</a>
       <a data-tab="health">System Health</a>
     </nav>
     <main id="main"><div class="empty">Loading…</div></main>
@@ -188,7 +189,7 @@ function schedulePoll(){ if(timer) clearTimeout(timer); timer=setTimeout(functio
 function render(isPoll){
   var m=$("main");
   var fn = ({overview:vOverview,chats:vChats,activity:vActivity,inventory:vInventory,
-             analytics:vAnalytics,errors:vErrors,health:vHealth})[TAB];
+             analytics:vAnalytics,errors:vErrors,excel:vExcelEdits,health:vHealth})[TAB];
   if(!fn) return;
   fn(m, isPoll).then(function(){ stamp(); schedulePoll(); })
     .catch(function(e){ if(String(e.message)!=="unauth") m.innerHTML='<div class="empty">⚠ '+esc(e.message)+'</div>'; });
@@ -458,6 +459,19 @@ function vErrors(m){
       '<div class="tbl-wrap"><table><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Detail</th></tr></thead><tbody>'+
       (fa||'<tr><td colspan=4 class="empty">None.</td></tr>')+'</tbody></table></div>';
     m.querySelectorAll(".chip[data-sev]").forEach(function(ch){ ch.onclick=function(){ errSev=ch.dataset.sev; vErrors($("main")); }; });
+  });
+}
+
+// ── EXCEL EDIT LOGS ──────────────────────────────────────────────────────────
+function vExcelEdits(m){
+  return api("/developer/excel_edits?limit=200").then(function(d){
+    var rows=(d.edits||[]).map(function(e){
+      return '<tr><td>'+fmt(e.ts)+'</td><td>'+esc(e.user||"—")+'</td><td>'+esc(e.sheet||"")+'</td>'+
+        '<td class="mono">'+esc(e.cell||"")+'</td><td class="muted">'+esc(e.old)+'</td><td>'+esc(e.new)+'</td></tr>'; }).join("");
+    m.innerHTML='<h2 class="sec">Excel Edit Logs</h2>'+
+      '<div class="filters"><span class="sub">cell changes saved through the live Excel editor · newest first · '+num(d.count)+' logged</span></div>'+
+      '<div class="tbl-wrap"><table><thead><tr><th>Time</th><th>User</th><th>Sheet</th><th>Cell</th><th>Old value</th><th>New value</th></tr></thead><tbody>'+
+      (rows||'<tr><td colspan=6 class="empty">No Excel edits logged yet.</td></tr>')+'</tbody></table></div>';
   });
 }
 

@@ -143,6 +143,8 @@ def route(method: str, path: str, body: bytes, service: ChatService,
                 return developer_dashboard.handle_health(service)
             if path == "/developer/errors":
                 return developer_dashboard.handle_errors(query_string)
+            if path == "/developer/excel_edits":
+                return developer_dashboard.handle_excel_edits(query_string)
             if path == "/developer/analytics":
                 return developer_dashboard.handle_analytics(service, query_string)
         except Exception as e:

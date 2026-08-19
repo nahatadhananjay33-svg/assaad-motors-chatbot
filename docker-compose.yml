@@ -41,6 +41,7 @@ services:
     environment:
       - EDITOR_XLSX=/data/IVR_Sheet.xlsx
       - EDITOR_BACKUP_DIR=/data/inventory_backups
+      - EDITOR_AUDIT_LOG=/data/excel_edit_audit.jsonl   # shared: dashboard reads /data
       - EDITOR_HOST=0.0.0.0
       - EDITOR_PORT=8010
     volumes:

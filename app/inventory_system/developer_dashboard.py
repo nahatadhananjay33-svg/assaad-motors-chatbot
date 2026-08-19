@@ -825,6 +825,35 @@ def handle_errors(query_string: str = "") -> Tuple[int, Dict[str, Any]]:
                  "failed_admin_actions": failed_admin, "capacity": _ERROR_RING.maxlen}
 
 
+def handle_excel_edits(query_string: str = "") -> Tuple[int, Dict[str, Any]]:
+    """Read-only view of edits saved through the live Excel editor. The editor
+    (editor_server.py) appends one JSON object per changed cell to
+    excel_edit_audit.jsonl in the shared data dir. Newest first."""
+    q = parse_qs(query_string or "")
+    try:
+        limit = int(q.get("limit", ["200"])[0])
+    except (TypeError, ValueError):
+        limit = 200
+    limit = max(1, min(limit, 1000))
+    path = os.path.join(config.DATA_DIR, "excel_edit_audit.jsonl")
+    entries: List[Dict[str, Any]] = []
+    try:
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        entries.append(json.loads(line))
+                    except Exception:
+                        continue
+    except Exception:
+        entries = []
+    entries.reverse()                                # newest first
+    return 200, {"edits": entries[:limit], "count": len(entries)}
+
+
 def handle_analytics(service: Any, query_string: str = "") -> Tuple[int, Dict[str, Any]]:
     conn = _pilot_conn(service)
     if conn is None:

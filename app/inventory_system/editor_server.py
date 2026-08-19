@@ -27,9 +27,11 @@ from __future__ import annotations
 
 import json
 import os
+import base64
 import shutil
 import sys
 import time
+from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -43,6 +45,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # writable workbook the chatbot loads (CHAT_XLSX). No behaviour change locally.
 WORKBOOK_PATH = os.environ.get("EDITOR_XLSX") or os.path.abspath(os.path.join(HERE, "..", "IVR_Sheet.xlsx"))
 BACKUP_DIR = os.environ.get("EDITOR_BACKUP_DIR") or os.path.abspath(os.path.join(HERE, "..", "inventory_backups"))
+# Audit log of every saved cell change (one JSON object per line). Kept in the
+# app's data dir so the Developer Dashboard (which reads config.DATA_DIR) can show
+# it. Default matches config.DATA_DIR locally (../inventory_system/data); the KVM2
+# container sets EDITOR_AUDIT_LOG=/data/excel_edit_audit.jsonl (the shared volume).
+AUDIT_LOG = os.environ.get("EDITOR_AUDIT_LOG") or os.path.join(HERE, "data", "excel_edit_audit.jsonl")
 
 # Which sheets the editor exposes, and whether each is editable.
 # The real workbook uses "DONT TOUCH SOLD" for the sold list; we surface it under
@@ -89,6 +96,33 @@ def _coerce(text):
         return str(text)
 
 
+def _col_letter(n):
+    """1-based column number -> Excel letters (1->A, 27->AA)."""
+    s = ""
+    while n > 0:
+        n, m = divmod(n - 1, 26)
+        s = chr(65 + m) + s
+    return s
+
+
+def _utcnow_iso():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _append_audit(entries):
+    """Append audit rows (one JSON object per line). Best-effort: a logging
+    failure must NEVER break an already-successful save."""
+    if not entries:
+        return
+    try:
+        os.makedirs(os.path.dirname(AUDIT_LOG), exist_ok=True)
+        with open(AUDIT_LOG, "a", encoding="utf-8") as f:
+            for e in entries:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
+
+
 def load_sheet_data(sheet_name):
     # NOTE: read_only random .cell() access is pathologically slow in openpyxl;
     # a normal load + iter_rows over this small workbook is fast and correct.
@@ -116,8 +150,9 @@ def load_sheet_data(sheet_name):
     }
 
 
-def save_edits(sheet_name, edits):
-    """edits: list of {r, c, v} with 1-based r/c. Backs up then writes in place."""
+def save_edits(sheet_name, edits, user="editor"):
+    """edits: list of {r, c, v} with 1-based r/c. Backs up then writes in place.
+    `user` is recorded in the audit log for each changed cell."""
     if not os.path.exists(WORKBOOK_PATH):
         raise FileNotFoundError(WORKBOOK_PATH)
     # backup first
@@ -132,19 +167,30 @@ def save_edits(sheet_name, edits):
         raise KeyError(sheet_name)
     ws = wb[sheet_name]
     applied = 0
+    audit_rows = []
+    ts = _utcnow_iso()
     for e in edits:
         r = int(e["r"])
         c = int(e["c"])
         if r < 1 or c < 1:
             continue
-        ws.cell(row=r, column=c).value = _coerce(e.get("v"))
+        cell = ws.cell(row=r, column=c)
+        old_val = _cell_to_str(cell.value)          # capture BEFORE overwrite
+        cell.value = _coerce(e.get("v"))
+        new_val = _cell_to_str(cell.value)
         applied += 1
+        audit_rows.append({
+            "ts": ts, "user": user, "sheet": sheet_name,
+            "cell": f"{_col_letter(c)}{r}", "old": old_val, "new": new_val,
+        })
 
     # atomic-ish write: temp then replace
     tmp = WORKBOOK_PATH + ".editortmp"
     wb.save(tmp)
     wb.close()
     os.replace(tmp, WORKBOOK_PATH)
+    # Log ONLY after the save actually succeeded (best-effort; never fatal).
+    _append_audit(audit_rows)
     return {"applied": applied, "backup": os.path.basename(backup)}
 
 
@@ -167,6 +213,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, *a):  # quiet
         return
+
+    def _auth_user(self):
+        """Username from the HTTP Basic Auth header (nginx gate) for the audit
+        log; falls back to 'editor' when there is no auth (local dev)."""
+        h = self.headers.get("Authorization", "")
+        if h.startswith("Basic "):
+            try:
+                dec = base64.b64decode(h[6:]).decode("utf-8", "replace")
+                return dec.split(":", 1)[0] or "editor"
+            except Exception:
+                return "editor"
+        return "editor"
 
     def _send(self, status, body, ctype="application/json; charset=utf-8"):
         if isinstance(body, (dict, list)):
@@ -233,7 +291,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(edits, list):
             return self._send(400, {"error": "edits_must_be_list"})
         try:
-            result = save_edits(cfg["sheet"], edits)
+            result = save_edits(cfg["sheet"], edits, user=self._auth_user())
         except Exception as e:
             return self._send(500, {"error": "save_failed", "detail": str(e)})
         result["ok"] = True
