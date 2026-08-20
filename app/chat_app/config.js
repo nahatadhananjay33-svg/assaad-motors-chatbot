@@ -16,19 +16,27 @@ window.DEALER_CONFIG = {
   // Welcome screen
   greeting: "Welcome to Assad Motors",
   subGreeting: "How can I help you today?",
-  // Opening chips. These are the filters customers actually use, so each one is
-  // worded exactly as it is sent to the bot — verified to return results against
-  // the live inventory (Manual 131, Automatic 56, Petrol 89, CNG 23, Luxury 27,
-  // Sunroof 2, 7-seater 33). "Sunroof cars" keeps the plural noun on purpose:
-  // that is what marks it as a search rather than a question about one car.
+  // Opening one-click filter chips. Each chip shows a friendly `label` but sends
+  // the exact `q` text to the SAME existing /chat backend — no separate filter
+  // system. Every `q` was verified against the live inventory to return the
+  // correct, exact-filtered, cheapest-first cars (counts at time of writing:
+  // 7-seat 33, 5-seat 115, CNG 23, Petrol 89, Diesel 74, Automatic 56, Manual
+  // 131, Luxury 28, Sunroof 2, <2L 32, <5L 105, <10L 157, <40k km 2). The plural
+  // "cars" / spelled-out band wording is what marks each as a search.
   suggestions: [
-    "Manual",
-    "Automatic",
-    "Petrol",
-    "Cng cars",
-    "Luxury cars",
-    "Sunroof cars",
-    "7 seater"
+    { label: "7 Seater",        q: "7 seater" },
+    { label: "5 Seater",        q: "5 seater" },
+    { label: "CNG Cars",        q: "cng cars" },
+    { label: "Petrol Cars",     q: "petrol cars" },
+    { label: "Diesel Cars",     q: "diesel cars" },
+    { label: "Automatic Cars",  q: "automatic cars" },
+    { label: "Manual Cars",     q: "manual cars" },
+    { label: "Luxury Cars",     q: "luxury cars" },
+    { label: "Sunroof Cars",    q: "sunroof cars" },
+    { label: "Under ₹2 Lakh",   q: "under 2 lakh" },
+    { label: "Under ₹5 Lakh",   q: "under 5 lakh" },
+    { label: "Under ₹10 Lakh",  q: "under 10 lakh" },
+    { label: "Under 40,000 KM", q: "under 40000 km" }
   ],
 
   inputPlaceholder: "Ask anything about our cars...",

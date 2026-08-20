@@ -27,12 +27,18 @@
   $("waLink").href = CFG.whatsapp || "#";
   $("callLink").href = CFG.phone || "#";
   input.placeholder = CFG.inputPlaceholder || "Ask anything...";
-  (CFG.suggestions || []).forEach(function (s) {
+  // A chip is either a plain query string, or {label, q}: label is shown, q is
+  // the exact text sent to the SAME /chat backend (no separate filter system).
+  function makeChip(s) {
+    var isObj = s && typeof s === "object";
     var b = document.createElement("button");
-    b.type = "button"; b.className = "chip"; b.textContent = s;
-    b.addEventListener("click", function () { sendMessage(s); });
-    $("chips").appendChild(b);
-  });
+    b.type = "button"; b.className = "chip";
+    b.textContent = isObj ? s.label : s;
+    var query = isObj ? s.q : s;
+    b.addEventListener("click", function () { sendMessage(query); });
+    return b;
+  }
+  (CFG.suggestions || []).forEach(function (s) { $("chips").appendChild(makeChip(s)); });
   function paintLogo(node) {
     if (CFG.logo) { node.style.backgroundImage = "url('" + CFG.logo + "')"; node.textContent = ""; }
     else { node.textContent = (CFG.name || "A").trim().charAt(0).toUpperCase(); }
@@ -343,12 +349,7 @@
     $("welcomeTitle").textContent = CFG.greeting || "";
     $("welcomeSub").textContent = CFG.subGreeting || "";
     var chips = $("chips"); chips.innerHTML = "";
-    (CFG.suggestions || []).forEach(function (s) {
-      var b = document.createElement("button");
-      b.type = "button"; b.className = "chip"; b.textContent = s;
-      b.addEventListener("click", function () { sendMessage(s); });
-      chips.appendChild(b);
-    });
+    (CFG.suggestions || []).forEach(function (s) { chips.appendChild(makeChip(s)); });
   }
 
   /* ── send / receive ── */
