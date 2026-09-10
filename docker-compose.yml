@@ -21,11 +21,39 @@ services:
       - CHAT_XLSX=/data/IVR_Sheet.xlsx          # writable: panel upload/edit works
       - CHAT_HOST=0.0.0.0
       - CHAT_API_PORT=8000
+      # ── ONLYOFFICE real-XLSX editor integration (/editor2) ──
+      - ONLYOFFICE_JWT_SECRET=${ONLYOFFICE_JWT_SECRET}
+      - ONLYOFFICE_APP_INTERNAL=http://app:8000  # document server -> this app
+      - ONLYOFFICE_PUBLIC_PATH=                    # doc server hosted at root prefixes (nginx)
+      - EDITOR2_TEST_OPEN=${EDITOR2_TEST_OPEN:-}  # isolated test: open page w/o ticket
+      - EDITOR2_WORKBOOK=${EDITOR2_WORKBOOK:-}    # isolated test: save to a COPY
     volumes:
       - ./data:/data                            # persistent: Excel + SQLite + backups
     expose:
       - "8000"                                  # internal only; nginx reaches it
     # No host port published — never expose the app directly.
+
+  # ── ONLYOFFICE Document Server — REAL spreadsheet editor for /editor2. ──
+  # Self-hosted, edits the SAME /data/IVR_Sheet.xlsx via the app's download/
+  # callback endpoints. JWT-secured with the shared ONLYOFFICE_JWT_SECRET.
+  # Internal only (nginx proxies /onlyoffice/). allowPrivateIPAddress is applied
+  # post-start by deployment/onlyoffice_postup.sh (the app is on a private IP).
+  onlyoffice:
+    image: onlyoffice/documentserver:8.1.1
+    restart: unless-stopped
+    environment:
+      - JWT_ENABLED=true
+      - JWT_SECRET=${ONLYOFFICE_JWT_SECRET}
+      - JWT_HEADER=Authorization
+      - JWT_IN_BODY=true
+    expose:
+      - "80"                                    # internal only; nginx proxies it
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost/healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 6
 
   # ── Inventory Excel editor (Excel-like browser grid) ──────────────────────
   # Reuses the SAME image as `app` (openpyxl + the editor files already baked in
@@ -65,6 +93,7 @@ services:
     depends_on:
       - app
       - editor
+      - onlyoffice
     ports:
       - "${HTTP_PORT:-80}:80"
       - "${HTTPS_PORT:-443}:443"

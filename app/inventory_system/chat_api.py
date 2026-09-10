@@ -491,6 +491,48 @@ def make_handler(service: ChatService, gate: SecurityGate = None):
             except Exception:
                 return "unknown"
 
+        def _respond_raw(self, status: int, body: bytes, content_type: str) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _handle_editor2(self, method: str, path: str, session_user) -> None:
+            import onlyoffice_editor as OE
+            hdrs = dict(self.headers)
+            # ── the editor PAGE: owner-only. Opened by the panel as
+            #    /editor2?ticket=<short-lived owner JWT>. A test-open env flag
+            #    lets the isolated pre-production test skip the ticket. ──
+            if method == "GET" and path == "/editor2":
+                ok = bool(session_user) or os.environ.get("EDITOR2_TEST_OPEN") == "1"
+                if not ok:
+                    from urllib.parse import urlparse, parse_qs
+                    q = parse_qs(urlparse(self.path).query)
+                    tok = (q.get("ticket") or [""])[0]
+                    p = OE.jwt_verify(tok) if tok else None
+                    ok = bool(p and p.get("purpose") == "editor2"
+                              and p.get("exp", 0) > time.time())
+                if not ok:
+                    self._respond_raw(403, b"Forbidden", "text/plain")
+                    return
+                self._respond_raw(200, OE.editor_page(service).encode("utf-8"),
+                                  "text/html; charset=utf-8")
+                return
+            if method == "GET" and path == "/editor2/download":
+                data = OE.handle_download(service, hdrs)
+                if data is None:
+                    self._respond(403, {"error": "forbidden"})
+                    return
+                self._respond_raw(200, data,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                return
+            if method == "POST" and path == "/editor2/callback":
+                res = OE.handle_callback(service, self._read_body(), hdrs)
+                self._respond(200, res)
+                return
+            self._respond(404, {"error": "not_found", "path": path})
+
         def _dispatch(self, method: str) -> None:
             t0 = time.perf_counter()
             cors = self._cors()
@@ -501,6 +543,16 @@ def make_handler(service: ChatService, gate: SecurityGate = None):
             # Identity for the permission engine: the session wins; the legacy
             # X-Acting-User header is only a fallback for un-migrated tooling.
             acting_user = session_user or self.headers.get("X-Acting-User")
+
+            # ── ONLYOFFICE editor endpoints (real XLSX editor). The document
+            #    server calls /editor2/download and /editor2/callback server-to
+            #    -server with a shared-secret JWT (no session/api-key), and those
+            #    responses are raw binary / plain JSON — so they are handled here,
+            #    BEFORE the api-key/session gate, and secured by JWT instead. ──
+            _epath = self.path.split("?", 1)[0]
+            if _epath == "/editor2" or _epath.startswith("/editor2/"):
+                self._handle_editor2(method, _epath, session_user)
+                return
 
             # ── auth + rate limiting ──
             denial = gate.authorize(method, self.path, dict(self.headers),
