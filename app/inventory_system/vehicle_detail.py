@@ -139,6 +139,15 @@ def build_detail(item, assets) -> Dict[str, Any]:
     videos = list(assets.videos) if assets else []
     veh_ig = list(assets.instagram) if assets else []
     veh_yt = list(assets.youtube) if assets else []
+    primary = _rows(item, _PRIMARY, keep_blank_as_na=True)
+    # A price under 5 digits (status codes / < ₹10,000) is NOT a real price — never
+    # quote a junk number. Show a visit-the-showroom message instead of a bare
+    # "Data not available" so the customer knows to come see the car.
+    if not getattr(item, "price_quotable", False):
+        for r in primary:
+            if r.get("label") == "Price":
+                r["value"] = "On request — visit showroom, owner will confirm"
+                break
     return {
         "status": "ok",
         "registration_no": item.registration_no,
@@ -146,14 +155,14 @@ def build_detail(item, assets) -> Dict[str, Any]:
         "make": item.make_full,
         "model": item.model,
         "variant": _s(item.variant),
-        "primary": _rows(item, _PRIMARY, keep_blank_as_na=True),
+        "primary": primary,
         "details": _rows(item, _DETAILS, keep_blank_as_na=False),
         "specs": _rows(item, _SPECS, keep_blank_as_na=False),
         "media": {"photos": photos, "videos": videos},
-        # vehicle-specific links only when the car actually has them; the frontend
-        # falls back to clearly-labelled DEALERSHIP links otherwise (never faked).
-        "links": {"instagram": veh_ig[0] if veh_ig else None,
-                  "youtube": veh_yt[0] if veh_yt else None},
+        # ALL of this vehicle's own Instagram / YouTube links (lists). The frontend
+        # shows every link (link 1, 2, 3 …) and, when a car has NO Instagram of its
+        # own, falls back to the dealership Instagram channel (never faked per-car).
+        "links": {"instagram": veh_ig, "youtube": veh_yt},
     }
 
 

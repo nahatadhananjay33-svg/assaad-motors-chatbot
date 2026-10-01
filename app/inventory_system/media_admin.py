@@ -125,8 +125,14 @@ class SupabaseMediaStore:  # pragma: no cover - exercised only against live Supa
         store = self._client.storage.from_(bucket)
         try:
             store.upload(object_path, data, {"content-type": ctype, "upsert": "true"})
-        except Exception:
-            pass                                              # already exists → idempotent
+        except Exception as e:
+            # With upsert=true a genuine duplicate should NOT error, so only treat an
+            # explicit "already exists" as idempotent success. Any other failure
+            # (network / incident / quota / auth) must propagate so upload_files
+            # reports upload_error and never writes a DEAD url into the Excel.
+            msg = str(e).lower()
+            if not ("exist" in msg or "duplicate" in msg or "409" in msg):
+                raise
         return store.get_public_url(object_path)
 
     def list_paths(self, bucket: str, prefix: str = "") -> List[str]:

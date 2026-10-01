@@ -36,7 +36,8 @@ window.DEALER_CONFIG = {
     { label: "Under ₹2 Lakh",   q: "under 2 lakh" },
     { label: "Under ₹5 Lakh",   q: "under 5 lakh" },
     { label: "Under ₹10 Lakh",  q: "under 10 lakh" },
-    { label: "Under 40,000 KM", q: "under 40000 km" }
+    { label: "Under 40,000 KM", q: "under 40000 km" },
+    { label: "YouTube Videos",  q: "youtube videos" }
   ],
 
   inputPlaceholder: "Ask anything about our cars...",

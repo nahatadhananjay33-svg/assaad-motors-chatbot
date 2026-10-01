@@ -175,6 +175,12 @@
       card.appendChild(title);
       var price = fmtPrice(v);
       if (price) { var p = document.createElement("div"); p.className = "car-price"; p.textContent = price; card.appendChild(p); }
+      else {
+        // No real (5-digit) price on file — never show a junk number; invite a visit.
+        var pr = document.createElement("div"); pr.className = "car-price car-price-req";
+        pr.textContent = "Price on request";
+        card.appendChild(pr);
+      }
       var chips = document.createElement("div"); chips.className = "car-chips";
       [v.fuel, v.transmission, v.color,
        (typeof v.km === "number" ? v.km.toLocaleString("en-IN") + " km" : null),
@@ -216,8 +222,17 @@
     });
     return h + '</div>';
   }
-  function closeVehicleDetail() {
-    var ov = $("vdetail"); if (ov) { ov.classList.remove("open"); document.body.classList.remove("vd-lock"); }
+  // `fromPop` = true when the browser/phone Back button triggered the close (a
+  // popstate already happened, so we must NOT call history.back again). Otherwise
+  // (in-app Back button, backdrop, Esc) we pop the history entry we pushed on open,
+  // so the Back button always goes exactly ONE step back — to the car list, not the
+  // Welcome screen.
+  function closeVehicleDetail(fromPop) {
+    var ov = $("vdetail");
+    if (ov) { ov.classList.remove("open"); document.body.classList.remove("vd-lock"); }
+    if (!fromPop) {
+      try { if (history.state && history.state.vd) history.back(); } catch (e) {}
+    }
   }
   function openVehicleDetail(reg) {
     if (!reg) return;
@@ -225,6 +240,9 @@
     if (!ov) { ov = document.createElement("div"); ov.id = "vdetail"; ov.className = "vd-overlay"; document.body.appendChild(ov); }
     ov.innerHTML = '<div class="vd-panel"><div class="vd-msg">Loading…</div></div>';
     ov.classList.add("open"); document.body.classList.add("vd-lock");
+    // Push a history entry so the hardware/browser Back button closes THIS overlay
+    // (one step back) instead of leaving the chat and resetting to Welcome.
+    try { history.pushState({ vd: 1 }, ""); } catch (e) {}
     ov.onclick = function (e) { if (e.target === ov) closeVehicleDetail(); };
     fetch(API + "/vehicle?reg=" + encodeURIComponent(reg))
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
@@ -266,19 +284,35 @@
       videos.forEach(function (u) { h += '<video controls preload="none" src="' + vdEsc(u) + '"></video>'; });
       h += '</div>';
     }
+    // Instagram / YouTube: show EVERY link this car has (link 1, 2, 3 …). When a car
+    // has NO Instagram of its own, fall back to the dealership channel.
     var lk = d.links || {};
-    var ig = lk.instagram || CFG.instagram, yt = lk.youtube || CFG.youtube;
-    if (ig || yt) {
-      h += '<div class="vd-links">';
-      if (ig) h += '<a class="vd-link ig" target="_blank" rel="noopener" href="' + vdEsc(ig) + '">Instagram' + (!lk.instagram ? ' (Dealership)' : '') + '</a>';
-      if (yt) h += '<a class="vd-link yt" target="_blank" rel="noopener" href="' + vdEsc(yt) + '">YouTube' + (!lk.youtube ? ' (Dealership)' : '') + '</a>';
-      h += '</div>';
+    var asList = function (x) {
+      return (Array.isArray(x) ? x : (x ? [x] : [])).filter(isHttp);
+    };
+    var igs = asList(lk.instagram), yts = asList(lk.youtube);
+    var linksHtml = "";
+    if (igs.length) {
+      igs.forEach(function (u, i) {
+        linksHtml += '<a class="vd-link ig" target="_blank" rel="noopener" href="' + vdEsc(u) + '">Instagram' + (igs.length > 1 ? " " + (i + 1) : "") + '</a>';
+      });
+    } else if (CFG.instagram) {
+      linksHtml += '<a class="vd-link ig" target="_blank" rel="noopener" href="' + vdEsc(CFG.instagram) + '">Instagram (Channel)</a>';
     }
+    yts.forEach(function (u, i) {
+      linksHtml += '<a class="vd-link yt" target="_blank" rel="noopener" href="' + vdEsc(u) + '">YouTube' + (yts.length > 1 ? " " + (i + 1) : "") + '</a>';
+    });
+    if (linksHtml) h += '<div class="vd-links">' + linksHtml + '</div>';
     panel.innerHTML = h;
     var b = ov.querySelector(".vd-back"); if (b) b.onclick = closeVehicleDetail;
     panel.scrollTop = 0;
   }
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeVehicleDetail(); });
+  // Browser / phone Back button while the detail is open → close it (one step back).
+  window.addEventListener("popstate", function () {
+    var ov = $("vdetail");
+    if (ov && ov.classList.contains("open")) closeVehicleDetail(true);
+  });
   function isHttp(u) { return typeof u === "string" && /^https?:\/\//i.test(u); }
   function addMedia(media) {
     if (!media) return;

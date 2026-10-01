@@ -331,6 +331,14 @@ _CATALOGUE_PHRASES = {
     "stock", "all stock", "all vehicles", "all gaadi", "all gadi", "puri list",
 }
 
+# Home-screen "YouTube Videos" filter chip: list every car that has a YouTube link
+# on file, with its link(s). Intercepted BEFORE the single-car media pipeline so it
+# browses instead of asking "which car?".
+_YOUTUBE_BROWSE_PHRASES = {
+    "youtube videos", "youtube video", "youtube cars", "youtube wali cars",
+    "cars with youtube", "youtube links", "video tour", "youtube",
+}
+
 # Phase 6D TASK2: vehicle-agnostic follow-up words — when none of these come
 # with a model/make/registration/etc, reuse the session's last vehicle.
 _FOLLOWUP_WORDS = [
@@ -502,7 +510,10 @@ def _price_line(it: Any) -> str:
     label = " ".join(b for b in bits if b).strip() or (it.make_full or "Yeh gaadi")
     if it.price_quotable and it.price_lakh is not None:
         return f"{label} ₹{it.price_lakh:.2f} lakh."
-    return f"{label} — exact best price main confirm kar ke bata deta hoon."
+    # No real (5-digit) price on file — never quote a junk number; invite a visit
+    # and let the owner confirm the exact price.
+    return (f"{label} — price ke liye ek baar showroom aa kar gaadi dekh lijiye, "
+            f"owner aapko best price confirm kar denge.")
 
 
 # ── Phase 8A.2: deterministic conversation helpers (no LLM) ───────────────────
@@ -874,6 +885,10 @@ class ChatService:
         # ── Phase 6C TASK5: catalogue / full inventory summary ──
         if _norm_catalogue(message) in _CATALOGUE_PHRASES:
             return self._handle_catalogue(rid)
+
+        # ── "YouTube Videos" browse chip: list every car that has a YouTube link ──
+        if _norm_catalogue(message) in _YOUTUBE_BROWSE_PHRASES:
+            return self._handle_youtube_browse(rid)
 
         # ── Phase 6B: minimal follow-up selection (year / option number) ──
         # If the previous turn showed a candidate list, resolve a short
@@ -1326,6 +1341,45 @@ class ChatService:
             intent="catalogue", response=response, vehicles=[], status="catalogue",
             count=self.inventory_count, filters={}, guardrails=["G-CATALOGUE"], request_id=rid,
             meta={"inventory_count": self.inventory_count, "returned": 0},
+        )
+
+    def _handle_youtube_browse(self, rid: str) -> ChatResult:
+        """List every customer-facing car that has a YouTube link on file, with its
+        link(s), cheapest first. Reuses the existing media provider + serializer —
+        no new filter system. Empty when no car has a YouTube link yet."""
+        found = []  # (item, [youtube urls])
+        for it in self.engine.all_facing:
+            try:
+                assets = self.media_service.provider.fetch(it)
+            except Exception:
+                assets = None
+            yts = [u for u in (getattr(assets, "youtube", None) or []) if u]
+            if yts:
+                found.append((it, yts))
+        if not found:
+            return ChatResult(
+                intent="youtube_browse",
+                response=("Abhi kisi gaadi ke YouTube video available nahi hain. "
+                          "Jaise hi add honge, yahin dikha denge."),
+                vehicles=[], status="youtube_browse", count=0, filters={},
+                guardrails=["G-YOUTUBE"], request_id=rid,
+                meta={"inventory_count": self.inventory_count, "returned": 0},
+            )
+        found.sort(key=lambda c: (c[0].price_inr if c[0].price_inr else 10 ** 12))
+        lines = [f"Ye {len(found)} gaadiyon ke YouTube videos available hain:", ""]
+        for it, yts in found:
+            label = " ".join(str(x) for x in (it.year_int, it.make_full, it.model)
+                             if x and str(x).lower() != "unknown").strip() or (it.model or "Gaadi")
+            if it.registration_no:
+                label += f" ({it.registration_no})"
+            for u in yts:
+                lines.append(f"- {label}: {u}")
+        return ChatResult(
+            intent="youtube_browse", response="\n".join(lines),
+            vehicles=[public_vehicle(it) for it, _ in found],
+            status="youtube_browse", count=len(found), filters={},
+            guardrails=["G-YOUTUBE"], request_id=rid,
+            meta={"inventory_count": self.inventory_count, "returned": len(found)},
         )
 
     def _handle_faq(self, rr, rid: str) -> ChatResult:
