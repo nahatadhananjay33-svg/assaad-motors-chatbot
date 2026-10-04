@@ -88,6 +88,57 @@ def _row_vals(ws, r: int, maxc: int) -> List[Any]:
     return [ws.cell(row=r, column=c).value for c in range(1, maxc + 1)]
 
 
+# Make-name tokens (built from the loader's MAKE_MAP) — used to spot a Make column
+# BY ITS VALUES when it has no header (the owner's terse sheet puts AUDI/MARU/HOND…
+# in a column with a blank header).
+_MAKE_TOKENS: Optional[set] = None
+
+
+def _make_tokens() -> set:
+    global _MAKE_TOKENS
+    if _MAKE_TOKENS is None:
+        toks: set = set()
+        try:
+            from inventory_loader import MAKE_MAP
+            for k, val in MAKE_MAP.items():
+                toks.add(str(k).upper())
+                for w in re.split(r"[\s\-/]+", str(val).upper()):
+                    if len(w) >= 2:
+                        toks.add(w)
+        except Exception:
+            pass
+        toks |= {"MARUTI", "SUZUKI", "HYUNDAI", "HONDA", "TOYOTA", "MAHINDRA", "TATA",
+                 "FORD", "RENAULT", "NISSAN", "VOLKSWAGEN", "SKODA", "CHEVROLET",
+                 "FIAT", "DATSUN", "MITSUBISHI", "JEEP", "KIA", "MG", "AUDI", "BMW",
+                 "MERCEDES", "BENZ", "JAGUAR", "RANGE", "ROVER", "VOLVO", "MINI",
+                 "LEXUS", "PORSCHE", "ISUZU", "FORCE", "HINDUSTAN", "HIND"}
+        _MAKE_TOKENS = toks
+    return _MAKE_TOKENS
+
+
+def _detect_make_col(ws, hr: int, maxc: int, used: set, sample: int = 50) -> Optional[int]:
+    """Return the 1-based column whose data values are mostly car-make names, or None.
+    Only used when no 'Make' HEADER was found."""
+    toks = _make_tokens()
+    best_frac, best_c = 0.0, None
+    last = min(hr + sample, ws.max_row or hr)
+    for c in range(1, maxc + 1):
+        if c in used:
+            continue
+        hits = total = 0
+        for r in range(hr + 1, last + 1):
+            v = ws.cell(row=r, column=c).value
+            if v is None or str(v).strip() == "":
+                continue
+            total += 1
+            su = str(v).strip().upper()
+            if su in toks or any(w in toks for w in re.split(r"[\s\-/]+", su)):
+                hits += 1
+        if total >= 5 and hits / total > best_frac:
+            best_frac, best_c = hits / total, c
+    return best_c if best_frac >= 0.5 else None
+
+
 def _find_sheet_and_header(wb) -> Optional[Tuple[str, int, Dict[int, int], int]]:
     """Return (sheet_name, header_row, {core_idx: src_col_1based}, max_col) for the
     first sheet whose top rows contain a CAR NUMB column — else None."""
@@ -150,6 +201,19 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
             return None
         sn, hr, colmap, maxc = found
         ws = wb[sn]
+
+        # Value-based fallback for Make/Model when their HEADERS are missing (the
+        # owner's terse sheet holds make/model data in unlabeled columns). Safe: only
+        # runs when the header map did not already locate them.
+        if 2 not in colmap:
+            mc = _detect_make_col(ws, hr, maxc, set(colmap.values()))
+            if mc:
+                colmap[2] = mc
+                nxt = mc + 1                      # model usually sits right after make
+                if (3 not in colmap and nxt <= maxc and nxt not in colmap.values()
+                        and not str(ws.cell(row=hr, column=nxt).value or "").strip()):
+                    colmap[3] = nxt
+
         mapped = set(colmap.values())
 
         # extra columns = every source column with a non-empty header not used as a

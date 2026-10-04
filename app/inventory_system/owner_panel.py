@@ -314,6 +314,26 @@ def handle_upload(service: Any, body: bytes, content_type: str
                 f.write(content)
         except OSError as e:
             return 500, {"status": "error", "detail": f"Could not save upload ({e})."}
+        # Header-aware normalization (same as /admin/upload_inventory): remap the
+        # owner's workbook BY COLUMN NAME (and detect Make/Model by value when their
+        # headers are absent) into the canonical layout, so a reordered / renamed-
+        # sheet / extra-column / terse file is accepted instead of rejected. Falls
+        # back to the original file if no CAR NUMB column is found.
+        try:
+            from inventory_normalize import normalize_to_canonical
+            _norm_tmp = incoming + ".norm.xlsx"
+            if normalize_to_canonical(incoming, _norm_tmp):
+                os.replace(_norm_tmp, incoming)
+            else:
+                try:
+                    os.remove(_norm_tmp)
+                except OSError:
+                    pass
+        except Exception:
+            try:
+                os.remove(incoming + ".norm.xlsx")
+            except OSError:
+                pass
         v = validate_workbook(incoming)
         if v["errors"] or int(v.get("vehicles_loaded") or 0) <= 0:
             try:
