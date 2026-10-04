@@ -188,6 +188,77 @@ def _build_sold_sheet(src_wb, out_wb) -> None:
         out_r += 1
 
 
+# Standard media groups we GUARANTEE on every normalised sheet, with the minimum
+# number of slots each must have. Photos live in the EXTERIOR group. Videos are
+# intentionally NOT guaranteed (the owner uses YouTube links instead), though any
+# VIDEO / INTERIOR group the uploaded sheet already has is always preserved.
+_STD_MEDIA: List[Tuple[str, int]] = [("INSTAGRAM", 6), ("EXTERIOR", 6), ("YOUTUBE", 6)]
+_MEDIA_KEYWORDS = ("INSTAGRAM", "EXTERIOR", "INTERIOR", "VIDEO", "YOUTUBE")
+
+
+def _media_kw(header: Any) -> Optional[str]:
+    """Return the media-group keyword a header belongs to (EXTERIOR 1 -> EXTERIOR), else None."""
+    hu = str(header if header is not None else "").strip().upper()
+    for kw in _MEDIA_KEYWORDS:
+        if hu == kw or hu.startswith(kw):
+            return kw
+    return None
+
+
+def _is_cont_header(header: Any) -> bool:
+    """True for a bare slot-continuation header like '2' or '3'."""
+    return str(header if header is not None else "").strip().isdigit()
+
+
+def _plan_media_columns(
+    extras: List[Tuple[int, str]]
+) -> Tuple[List[Tuple[Optional[int], str]], List[str]]:
+    """Plan the output's non-core columns so every standard media group has enough
+    slots. Returns (plan, added):
+      * plan  — ordered [(src_col | None, header)] for EVERY output extra column
+                (real preserved columns + synthesised empty slots).
+      * added — synthesised header texts, for the report.
+    Standard groups (INSTAGRAM/EXTERIOR/YOUTUBE) are topped up to their minimum slot
+    count and any wholly missing standard group is appended. Existing groups are
+    NEVER shrunk (no data loss) and non-standard groups (VIDEO/INTERIOR) are kept
+    exactly as uploaded but never synthesised."""
+    targets = dict(_STD_MEDIA)
+    plan: List[Tuple[Optional[int], str]] = []
+    added: List[str] = []
+    seen: set = set()
+    i, n = 0, len(extras)
+    while i < n:
+        src_c, htext = extras[i]
+        kw = _media_kw(htext)
+        if kw is None:                                   # ordinary owner column — keep as-is
+            plan.append((src_c, htext))
+            i += 1
+            continue
+        group = [(src_c, htext)]                          # a media group: keyword + numeric runs
+        j = i + 1
+        while j < n and _is_cont_header(extras[j][1]):
+            group.append(extras[j])
+            j += 1
+        for gc, gh in group:
+            plan.append((gc, gh))
+        if kw in targets:                                 # top up a short standard group
+            seen.add(kw)
+            for k in range(len(group), targets[kw]):
+                h = str(k + 1)
+                plan.append((None, h))
+                added.append(kw + " " + h)
+        i = j
+    for kw, target in _STD_MEDIA:                         # append wholly-missing standard groups
+        if kw in seen:
+            continue
+        plan.append((None, kw + " 1"))
+        added.append(kw + " 1")
+        for k in range(1, target):
+            plan.append((None, str(k + 1)))
+            added.append(kw + " " + str(k + 1))
+    return plan, added
+
+
 def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, Any]]:
     """Read src workbook by header name, write a canonical DNJ + DONT TOUCH SOLD
     workbook to out_path. Returns a report dict, or None if no CAR NUMB column
@@ -226,22 +297,12 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
             if h is not None and str(h).strip() != "":
                 extras.append((c, str(h).strip()))
 
-        # Guarantee the standard media groups ALWAYS exist, so photo / video /
-        # instagram / youtube uploads always have slots — even if the uploaded sheet
-        # had none. Existing groups (with their data) are kept above; only MISSING
-        # ones are appended as empty, header-only columns.
-        _present = set()
-        for _c, _h in extras:
-            hu = str(_h).strip().upper()
-            for kw in ("INSTAGRAM", "EXTERIOR", "INTERIOR", "VIDEO", "YOUTUBE"):
-                if hu == kw or hu.startswith(kw):
-                    _present.add(kw)
-        synth_headers: List[str] = []
-        for kw, n in (("INSTAGRAM", 6), ("EXTERIOR", 10), ("VIDEO", 5), ("YOUTUBE", 2)):
-            if kw in _present:
-                continue
-            synth_headers.append(kw + " 1")
-            synth_headers.extend(str(i) for i in range(2, n + 1))
+        # Guarantee the standard media groups ALWAYS have enough slots, so photo /
+        # instagram / youtube uploads always have somewhere to go — even if the
+        # uploaded sheet had none, or had FEWER slots than we want. Standard sizes:
+        # INSTAGRAM 6, EXTERIOR (photos) 6, YOUTUBE 6. Existing groups (with their
+        # data) are kept and topped up; only truly missing groups are added empty.
+        media_plan, media_groups_added = _plan_media_columns(extras)
 
         # data rows: everything below the header row, skipping blank rows. The
         # description/legend row only ever sits DIRECTLY under the header, so we only
@@ -264,11 +325,8 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
             od.cell(row=2, column=i, value=name)
             if hint:
                 od.cell(row=3, column=i, value=hint)
-        for j, (_src_c, htext) in enumerate(extras):
+        for j, (_src_c, htext) in enumerate(media_plan):
             od.cell(row=2, column=N_CORE + 1 + j, value=htext)
-        _synth_base = N_CORE + len(extras)
-        for k, htext in enumerate(synth_headers):
-            od.cell(row=2, column=_synth_base + 1 + k, value=htext)
 
         # data rows from row 4
         out_r = 4
@@ -279,8 +337,8 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
                     v = cells[sc - 1]
                     if v is not None and str(v).strip() != "":
                         od.cell(row=out_r, column=idx + 1, value=v)
-            for j, (sc, _htext) in enumerate(extras):
-                if sc - 1 < len(cells):
+            for j, (sc, _htext) in enumerate(media_plan):
+                if sc is not None and sc - 1 < len(cells):
                     v = cells[sc - 1]
                     if v is not None and str(v).strip() != "":
                         od.cell(row=out_r, column=N_CORE + 1 + j, value=v)
@@ -295,7 +353,7 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
             "core_mapped": sorted(nm for ix, nm, _h, _a in _CORE if ix in colmap),
             "core_missing": sorted(nm for ix, nm, _h, _a in _CORE if ix not in colmap),
             "extra_columns": [h for _c, h in extras],
-            "media_groups_added": synth_headers,
+            "media_groups_added": media_groups_added,
             "data_rows": len(data),
         }
     finally:
