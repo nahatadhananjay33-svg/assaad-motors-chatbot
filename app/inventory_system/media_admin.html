@@ -45,7 +45,9 @@
 
   <div class="card">
     <h2>Vehicles</h2>
-    <p class="muted">Click a car to select it, then use the actions below.</p>
+    <p class="muted">Type a car number (or model) to find it fast — then it selects automatically. Or click any row.</p>
+    <input type="text" id="carSearch" placeholder="🔍 Search car number or model — e.g. 3118, MH05, Alto" autocomplete="off" />
+    <div id="matchInfo" class="muted" style="margin:6px 0 2px;"></div>
     <table>
       <thead><tr><th>Car Number</th><th>Model</th><th>Status</th></tr></thead>
       <tbody id="rows"><tr><td colspan="3" class="muted">Not loaded yet.</td></tr></tbody>
@@ -73,6 +75,7 @@
   $("base").value = AUTH.base;
   $("user").value = AUTH.user;           // lets loadPerms() fire for the session user
   let selected = null;
+  let ALL = [];                          // all vehicles (for the search filter)
   // Phase 9B deep-link: ?car=<reg> preselects that car after the list loads
   // (used by the Inventory Dashboard "Media" shortcut). Additive only.
   let PRESELECT = new URLSearchParams(location.search).get("car");
@@ -115,16 +118,20 @@
       const r = await fetch(baseUrl() + "/admin/media/vehicles", { headers: headers() });
       if (!r.ok) { setStatus("Could not load (" + r.status + "). Check server address and admin key.", "err"); return; }
       const d = await r.json();
+      ALL = d.vehicles || [];
       const tbody = $("rows"); tbody.innerHTML = "";
-      (d.vehicles || []).forEach(v => {
+      ALL.forEach(v => {
         const tr = document.createElement("tr");
         tr.className = "car";
+        tr.dataset.reg = (v.car_number || "").toLowerCase();
+        tr.dataset.model = (v.model || "").toLowerCase();
         tr.innerHTML = `<td>${v.car_number}</td><td>${v.model || ""}</td>` +
                        `<td><span class="pill ${v.status}">${v.status}</span></td>`;
         tr.onclick = () => selectVehicle(v, tr);
         tbody.appendChild(tr);
       });
-      if (!d.vehicles || !d.vehicles.length) tbody.innerHTML = '<tr><td colspan="3" class="muted">No vehicles.</td></tr>';
+      if (!ALL.length) tbody.innerHTML = '<tr><td colspan="3" class="muted">No vehicles.</td></tr>';
+      filterRows();                        // apply any current search text + counts
       if (PRESELECT) {
         const v = (d.vehicles || []).find(x => x.car_number === PRESELECT);
         const tr = [...document.querySelectorAll("tr.car")].find(t => t.firstChild.textContent === PRESELECT);
@@ -142,6 +149,41 @@
     $("selModel").textContent = v.model ? "(" + v.model + ")" : "";
     $("actions").style.display = "block";
     setStatus("", "");
+  }
+
+  // ── Search / filter the vehicle list (car number or model) ──
+  function updateMatchInfo() {
+    const info = $("matchInfo"); if (!info) return;
+    const total = ALL.length;
+    const raw = ($("carSearch").value || "").trim();
+    if (!raw) { info.textContent = total ? (total + " cars — start typing to filter") : ""; return; }
+    const visible = [...document.querySelectorAll("tr.car")].filter(t => t.style.display !== "none").length;
+    info.textContent = visible + " of " + total + " match";
+  }
+  function filterRows() {
+    const raw = ($("carSearch").value || "").trim().toLowerCase();
+    const qns = raw.replace(/[^a-z0-9]/g, "");          // reg has no spaces/symbols
+    const rows = [...document.querySelectorAll("tr.car")];
+    const visible = [];
+    rows.forEach(tr => {
+      const reg = tr.dataset.reg || "", model = tr.dataset.model || "";
+      const match = !raw || (qns && reg.indexOf(qns) !== -1) || (model.indexOf(raw) !== -1);
+      tr.style.display = match ? "" : "none";
+      if (match) visible.push(tr);
+    });
+    updateMatchInfo();
+    // Exactly one match → auto-select so the owner can act straight away.
+    if (qns && visible.length === 1) {
+      const only = visible[0];
+      const v = ALL.find(x => (x.car_number || "").toLowerCase() === only.dataset.reg);
+      if (v) selectVehicle(v, only);
+    }
+  }
+  function selectFirstVisible() {
+    const tr = [...document.querySelectorAll("tr.car")].find(t => t.style.display !== "none");
+    if (!tr) return;
+    const v = ALL.find(x => (x.car_number || "").toLowerCase() === tr.dataset.reg);
+    if (v) { selectVehicle(v, tr); tr.scrollIntoView({ block: "center" }); }
   }
 
   async function uploadFiles(kind, fileList) {
@@ -200,6 +242,8 @@
   $("btnInsta").onclick = () => addLink("instagram");
   $("btnYt").onclick = () => addLink("youtube");
   $("btnSold").onclick = markSold;
+  $("carSearch").oninput = filterRows;
+  $("carSearch").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); selectFirstVisible(); } };
   loadVehicles();                        // Phase 10D: signed in → load immediately
 </script>
 </body>
