@@ -331,3 +331,14 @@ body.vd-lock { overflow: hidden; }
   .vd-grid { grid-template-columns: 1fr; }
   .vd-photos { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ── pull-to-refresh (mobile): pull down at the top of the chat to reload ── */
+#ptr { position: fixed; top: 6px; left: 50%; width: 36px; height: 36px; margin-left: -18px;
+  border-radius: 50%; background: #fff; box-shadow: 0 3px 12px rgba(15, 23, 42, .20);
+  display: flex; align-items: center; justify-content: center; z-index: 60;
+  opacity: 0; transform: translateY(-52px); pointer-events: none; }
+#ptr.snap { transition: transform .2s ease, opacity .2s ease; }
+#ptr .ptr-ic { width: 20px; height: 20px; border: 2.5px solid #cbd5e1;
+  border-top-color: var(--blue, #2563eb); border-radius: 50%; }
+#ptr.refreshing .ptr-ic { animation: ptr-rot .7s linear infinite; }
+@keyframes ptr-rot { to { transform: rotate(360deg); } }

@@ -472,6 +472,47 @@
   });
   input.addEventListener("blur", applyUpdateIfSafe);      // apply a pending update once idle
 
+  /* ── pull-to-refresh: at the top of the chat, pull down to reload the page ──
+     The app uses an inner scroll area (body is fixed), so the browser's native
+     pull-to-refresh never fires. This adds it back: pulling down while already at
+     the top shows a spinner and, past a threshold, reloads — the familiar Android
+     gesture. Touch devices only; disabled while a vehicle-detail overlay is open. */
+  (function () {
+    if (!(navigator.maxTouchPoints > 0 || "ontouchstart" in window)) return;
+    var ptr = document.createElement("div");
+    ptr.id = "ptr"; ptr.innerHTML = '<div class="ptr-ic"></div>';
+    document.body.appendChild(ptr);
+    var startY = 0, dist = 0, pulling = false;
+    var THRESH = 64, MAXP = 150;
+    function show(px) {
+      var d = Math.min(px, MAXP) * 0.6;
+      ptr.style.transform = "translateY(" + Math.min(d - 52, 16) + "px)";
+      ptr.style.opacity = Math.min(d / 46, 1);
+    }
+    function reset() { ptr.classList.add("snap"); ptr.style.transform = ""; ptr.style.opacity = ""; }
+    chatScroll.addEventListener("touchstart", function (e) {
+      if (document.body.classList.contains("vd-lock") || chatScroll.scrollTop > 0 || e.touches.length !== 1) {
+        pulling = false; return;
+      }
+      startY = e.touches[0].clientY; dist = 0; pulling = true; ptr.classList.remove("snap");
+    }, { passive: true });
+    chatScroll.addEventListener("touchmove", function (e) {
+      if (!pulling) return;
+      dist = e.touches[0].clientY - startY;
+      if (dist <= 0) { pulling = false; reset(); return; }
+      if (chatScroll.scrollTop <= 0) { e.preventDefault(); show(dist); }
+    }, { passive: false });
+    chatScroll.addEventListener("touchend", function () {
+      if (!pulling) return;
+      pulling = false; ptr.classList.add("snap");
+      if (dist * 0.6 >= THRESH) {
+        ptr.classList.add("refreshing");
+        ptr.style.transform = "translateY(16px)"; ptr.style.opacity = "1";
+        setTimeout(function () { location.reload(); }, 150);
+      } else { reset(); }
+    });
+  })();
+
   /* ── boot ── */
   renderRecents();
   newConversation();
