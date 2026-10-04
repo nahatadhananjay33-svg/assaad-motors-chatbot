@@ -197,10 +197,12 @@ _MEDIA_KEYWORDS = ("INSTAGRAM", "EXTERIOR", "INTERIOR", "VIDEO", "YOUTUBE")
 
 
 def _media_kw(header: Any) -> Optional[str]:
-    """Return the media-group keyword a header belongs to (EXTERIOR 1 -> EXTERIOR), else None."""
+    """Return the media-group keyword a header belongs to (EXTERIOR 1 -> EXTERIOR), else None.
+    Matches only a group header ("EXTERIOR", "EXTERIOR 1", "EXTERIOR 1 (…)") — NOT legacy
+    single fields like YOUTUBE_URL / INSTAGRAM_URL / VIDEO_URLS that merely start with the word."""
     hu = str(header if header is not None else "").strip().upper()
     for kw in _MEDIA_KEYWORDS:
-        if hu == kw or hu.startswith(kw):
+        if hu == kw or hu.startswith(kw + " "):
             return kw
     return None
 
