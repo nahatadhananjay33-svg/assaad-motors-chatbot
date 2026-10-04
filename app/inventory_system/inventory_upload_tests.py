@@ -127,8 +127,11 @@ class TestRejections(UploadTestBase):
             ws = wb[DNJ_SHEET]
             col = IU._CAR_NUMB_IDX + 1                          # 1-based column N
             vals = [(i, ws.cell(row=i, column=col).value) for i in range(1, ws.max_row + 1)]
+            # Real registrations only — exclude header tokens AND the row-3 hint
+            # placeholder ("e.g. MH01AB1234 (required)"), which is not a real car.
             regs = [(i, v) for i, v in vals if v and str(v).strip()
-                    and str(v).strip().upper() not in IU._HEADER_TOKENS]
+                    and str(v).strip().upper() not in IU._HEADER_TOKENS
+                    and "e.g." not in str(v).lower()]
             self.assertGreaterEqual(len(regs), 2)
             ws.cell(row=regs[1][0], column=col).value = regs[0][1]   # force a duplicate
         body, ct = _multipart(self._make_variant(mutate))

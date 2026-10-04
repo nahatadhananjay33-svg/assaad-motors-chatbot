@@ -84,14 +84,19 @@ def validate_workbook(path: str) -> Dict[str, Any]:
             return {"errors": ["Sheet 'DNJ' not found — do not rename the sheets."],
                     "warnings": [], "vehicles_loaded": 0, "rows_processed": 0}
         ws = wb[DNJ_SHEET]
-        if (ws.max_column or 0) < _CAR_NUMB_IDX + 1:
-            errors.append("Required column 'CAR NUMB' (N) is missing — keep the "
-                          "column layout unchanged.")
-        # scan registrations for presence + duplicates
+        # scan registrations for presence + duplicates, tracking the widest row.
+        # NOTE: we deliberately do NOT trust ws.max_column for the column-count
+        # check — in read_only mode openpyxl returns None for it when the writer
+        # omits the cached <dimension> element (ONLYOFFICE's save does this), which
+        # would falsely flag column N as missing. The actual per-row width from the
+        # scan below is the authority.
         seen: Dict[str, int] = {}
         regs = 0
+        widest = 0
         for r in ws.iter_rows(values_only=True):
             rows += 1
+            if r:
+                widest = max(widest, len(r))
             if not r or len(r) <= _CAR_NUMB_IDX:
                 continue
             val = r[_CAR_NUMB_IDX]
@@ -102,6 +107,9 @@ def validate_workbook(path: str) -> Dict[str, Any]:
                 continue
             regs += 1
             seen[s] = seen.get(s, 0) + 1
+        if widest < _CAR_NUMB_IDX + 1:
+            errors.append("Required column 'CAR NUMB' (N) is missing — keep the "
+                          "column layout unchanged.")
     finally:
         wb.close()
 
@@ -171,6 +179,22 @@ def handle_upload(service: Any, body: bytes, content_type: str) -> Tuple[int, Di
     except OSError as e:
         return 500, {"status": "error", "detail": f"Could not stage upload ({e}).",
                      "live_inventory_changed": False}
+
+    # 0) HEADER-AWARE NORMALIZATION — read the owner's sheet by column NAME and
+    #    rewrite it into the canonical layout (core fields A..Q, every other column
+    #    kept, sheets named DNJ + DONT TOUCH SOLD). This makes a reordered /
+    #    renamed-sheet / extra-column / differently-spelled file just work instead
+    #    of erroring. If no recognisable header row is found it leaves the file as
+    #    is, so the strict validation below still gives a clear message.
+    try:
+        from inventory_normalize import normalize_to_canonical
+        _norm_tmp = incoming + ".norm.xlsx"
+        if normalize_to_canonical(incoming, _norm_tmp):
+            os.replace(_norm_tmp, incoming)
+        else:
+            _silent_remove(_norm_tmp)
+    except Exception:
+        _silent_remove(incoming + ".norm.xlsx")   # fall back to the original file
 
     # 1) validate the candidate (live file still untouched)
     v = validate_workbook(incoming)
