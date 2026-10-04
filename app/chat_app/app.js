@@ -444,8 +444,37 @@
   scrim.addEventListener("click", closeDrawer);
   $("newChatBtn").addEventListener("click", function () { newConversation(); closeDrawer(); input.focus(); });
 
+  /* ── auto-update: reload open tabs when a new version is deployed ──
+     Polls version.json (relative to this page, served no-cache + cache:"no-store").
+     On first load it records the running version; if a later poll sees a different
+     version, a newer build is live, so it reloads to pick it up. The reload is
+     deferred while the composer has unsent text or a request is in flight, so
+     nothing the user is doing is lost (chat history persists in localStorage). If
+     version.json is missing (e.g. local dev), the check silently no-ops. */
+  var APP_VERSION = null, updatePending = false;
+  function applyUpdateIfSafe() {
+    if (updatePending && !busy && !input.value.trim()) location.reload();
+  }
+  function checkVersion() {
+    fetch("version.json?t=" + Date.now(), { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!d || !d.version) return;
+        if (APP_VERSION === null) { APP_VERSION = d.version; return; }
+        if (d.version !== APP_VERSION) { updatePending = true; applyUpdateIfSafe(); }
+      })
+      .catch(function () {});
+  }
+  setInterval(checkVersion, 90000);                       // every 90s
+  window.addEventListener("focus", checkVersion);
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible") checkVersion();
+  });
+  input.addEventListener("blur", applyUpdateIfSafe);      // apply a pending update once idle
+
   /* ── boot ── */
   renderRecents();
   newConversation();
   input.focus();
+  checkVersion();                                         // establish the baseline version
 })();

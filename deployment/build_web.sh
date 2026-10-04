@@ -29,5 +29,13 @@ cp app/inventory_system/auth_guard.js "$WEB/inventory_system/"
 # same-origin API (nginx proxies /chat) — never the dev host:8000
 sed -i 's#^  apiUrl:.*#  apiUrl: ""   // same origin — nginx proxies /chat#' "$WEB/config.js"
 
+# version stamp — the chat app polls version.json (served no-cache) and silently
+# reloads already-open tabs when a new deploy changes it, so updates reach every
+# device without a manual refresh. Changes on each deploy via the commit SHA
+# (timestamp fallback outside a git checkout).
+VERSION="$(git rev-parse --short HEAD 2>/dev/null || date +%Y%m%d%H%M%S)"
+printf '{"version":"%s"}\n' "$VERSION" > "$WEB/version.json"
+echo "version stamp: $VERSION"
+
 echo "web root built at $WEB:"
 ls "$WEB" && echo "  inventory_system/:" && ls "$WEB/inventory_system"
