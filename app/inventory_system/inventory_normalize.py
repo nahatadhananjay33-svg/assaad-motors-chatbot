@@ -212,6 +212,47 @@ def _is_cont_header(header: Any) -> bool:
     return str(header if header is not None else "").strip().isdigit()
 
 
+def _url_platform(v: Any) -> Optional[str]:
+    """Classify a cell value as an INSTAGRAM or YOUTUBE link, else None."""
+    s = str(v if v is not None else "").lower()
+    if "instagram.com" in s:
+        return "INSTAGRAM"
+    if "youtube.com" in s or "youtu.be" in s:
+        return "YOUTUBE"
+    return None
+
+
+def _detect_url_media_cols(ws, hr: int, maxc: int, used: set, sample: int = 80) -> Dict[str, List[int]]:
+    """Find UNHEADERED columns that hold media links (owner's raw export often drops
+    instagram/youtube URLs into blank-header columns). Returns {platform: [cols...]}
+    in column order, so they can be preserved instead of dropped. Detected by value:
+    a column counts for a platform when its non-empty values are >=50% that platform's
+    links. Headered columns are left to the normal extra-column path."""
+    last = min(hr + sample, ws.max_row or hr)
+    out: Dict[str, List[int]] = {}
+    for c in range(1, maxc + 1):
+        if c in used:
+            continue
+        if str(ws.cell(row=hr, column=c).value or "").strip():   # has a header -> handled elsewhere
+            continue
+        counts: Dict[str, int] = {}
+        nonempty = 0
+        for r in range(hr + 1, last + 1):
+            v = ws.cell(row=r, column=c).value
+            if v is None or str(v).strip() == "":
+                continue
+            nonempty += 1
+            p = _url_platform(v)
+            if p:
+                counts[p] = counts.get(p, 0) + 1
+        if not counts:
+            continue
+        p = max(counts, key=counts.get)
+        if counts[p] / max(nonempty, 1) >= 0.5:
+            out.setdefault(p, []).append(c)
+    return out
+
+
 def _plan_media_columns(
     extras: List[Tuple[int, str]]
 ) -> Tuple[List[Tuple[Optional[int], str]], List[str]]:
@@ -299,6 +340,22 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
             if h is not None and str(h).strip() != "":
                 extras.append((c, str(h).strip()))
 
+        # Recover media links that sit in UNHEADERED columns (the owner's raw export
+        # often drops instagram/youtube URLs into blank-header columns, which would
+        # otherwise be lost). Detect them by value and append them as proper media
+        # groups — but only for a platform not already present as a headered group.
+        media_recovered: List[str] = []
+        present_media = {k for _c, _h in extras if (k := _media_kw(_h))}
+        used2 = mapped | {c for c, _h in extras}
+        recovered = _detect_url_media_cols(ws, hr, maxc, used2)
+        for platform in ("INSTAGRAM", "YOUTUBE"):
+            cols = recovered.get(platform) or []
+            if not cols or platform in present_media:
+                continue
+            for n, sc in enumerate(cols, start=1):
+                extras.append((sc, platform + " 1" if n == 1 else str(n)))
+                media_recovered.append(platform + " " + str(n))
+
         # Guarantee the standard media groups ALWAYS have enough slots, so photo /
         # instagram / youtube uploads always have somewhere to go — even if the
         # uploaded sheet had none, or had FEWER slots than we want. Standard sizes:
@@ -356,6 +413,7 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
             "core_missing": sorted(nm for ix, nm, _h, _a in _CORE if ix not in colmap),
             "extra_columns": [h for _c, h in extras],
             "media_groups_added": media_groups_added,
+            "media_recovered": media_recovered,
             "data_rows": len(data),
         }
     finally:
