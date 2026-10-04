@@ -226,6 +226,23 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
             if h is not None and str(h).strip() != "":
                 extras.append((c, str(h).strip()))
 
+        # Guarantee the standard media groups ALWAYS exist, so photo / video /
+        # instagram / youtube uploads always have slots — even if the uploaded sheet
+        # had none. Existing groups (with their data) are kept above; only MISSING
+        # ones are appended as empty, header-only columns.
+        _present = set()
+        for _c, _h in extras:
+            hu = str(_h).strip().upper()
+            for kw in ("INSTAGRAM", "EXTERIOR", "INTERIOR", "VIDEO", "YOUTUBE"):
+                if hu == kw or hu.startswith(kw):
+                    _present.add(kw)
+        synth_headers: List[str] = []
+        for kw, n in (("INSTAGRAM", 6), ("EXTERIOR", 10), ("VIDEO", 5), ("YOUTUBE", 2)):
+            if kw in _present:
+                continue
+            synth_headers.append(kw + " 1")
+            synth_headers.extend(str(i) for i in range(2, n + 1))
+
         # data rows: everything below the header row, skipping blank rows. The
         # description/legend row only ever sits DIRECTLY under the header, so we only
         # hint-check that one position — never later rows (a real car's notes could
@@ -249,6 +266,9 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
                 od.cell(row=3, column=i, value=hint)
         for j, (_src_c, htext) in enumerate(extras):
             od.cell(row=2, column=N_CORE + 1 + j, value=htext)
+        _synth_base = N_CORE + len(extras)
+        for k, htext in enumerate(synth_headers):
+            od.cell(row=2, column=_synth_base + 1 + k, value=htext)
 
         # data rows from row 4
         out_r = 4
@@ -275,6 +295,7 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
             "core_mapped": sorted(nm for ix, nm, _h, _a in _CORE if ix in colmap),
             "core_missing": sorted(nm for ix, nm, _h, _a in _CORE if ix not in colmap),
             "extra_columns": [h for _c, h in extras],
+            "media_groups_added": synth_headers,
             "data_rows": len(data),
         }
     finally:
