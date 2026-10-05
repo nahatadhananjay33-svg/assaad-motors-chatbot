@@ -24,8 +24,12 @@
   $("footerNote").textContent = CFG.footer || "";
   $("sidebarFooter").textContent = CFG.footer || "";
   $("igLink").href = CFG.instagram || "#";
-  // Contact numbers — both the Call and WhatsApp header buttons open a popup listing
-  // every dealership number. Falls back to a legacy single CFG.phone/CFG.whatsapp.
+  // Contact numbers — the dealership runs multiple numbers so WhatsApp traffic is
+  // spread across them (one number flooded with chats risks a WhatsApp block). Each
+  // tap on the Call / WhatsApp header icon picks ONE number at random and goes
+  // straight there, so over many customers traffic lands evenly on all numbers and
+  // the customer is never shown a confusing list. Falls back to a legacy single
+  // CFG.phone/CFG.whatsapp.
   var CONTACTS = (function () {
     var list = (CFG.contacts && CFG.contacts.length) ? CFG.contacts
              : [ (CFG.phone || CFG.whatsapp || "") ];
@@ -37,9 +41,21 @@
     });
     return out;
   })();
+  function pickContact() {
+    if (!CONTACTS.length) return "";
+    return CONTACTS[Math.floor(Math.random() * CONTACTS.length)];
+  }
   $("waLink").href = "#"; $("callLink").href = "#";
-  $("waLink").addEventListener("click", function (e) { e.preventDefault(); openContact(); });
-  $("callLink").addEventListener("click", function (e) { e.preventDefault(); openContact(); });
+  $("waLink").addEventListener("click", function (e) {
+    e.preventDefault();
+    var d = pickContact();
+    if (d) window.open("https://wa.me/91" + d, "_blank", "noopener");
+  });
+  $("callLink").addEventListener("click", function (e) {
+    e.preventDefault();
+    var d = pickContact();
+    if (d) window.location.href = "tel:+91" + d;
+  });
   input.placeholder = CFG.inputPlaceholder || "Ask anything...";
   // A chip is either a plain query string, or {label, q}: label is shown, q is
   // the exact text sent to the SAME /chat backend (no separate filter system).
@@ -333,33 +349,12 @@
     if (cp && cp.classList.contains("open")) closeContact(true);
   });
 
-  /* ── Contact popup: lists every dealership number (Call + WhatsApp each) ── */
-  function fmtNum(d) { return "+91 " + d.slice(0, 5) + " " + d.slice(5); }
+  /* ── legacy contact-overlay closer (overlay no longer opened; kept as a safe
+     no-op for the Escape / Back handlers) ── */
   function closeContact(fromPop) {
     var ov = $("contactPop");
     if (ov) { ov.classList.remove("open"); document.body.classList.remove("vd-lock"); }
     if (!fromPop) { try { if (history.state && history.state.contact) history.back(); } catch (e) {} }
-  }
-  function openContact() {
-    if (!CONTACTS.length) return;
-    var ov = $("contactPop");
-    if (!ov) { ov = document.createElement("div"); ov.id = "contactPop"; ov.className = "contact-overlay"; document.body.appendChild(ov); }
-    var rows = CONTACTS.map(function (d) {
-      return '<div class="contact-row"><span class="contact-num">' + fmtNum(d) + '</span>' +
-             '<span class="contact-acts">' +
-             '<a class="contact-btn call" href="tel:+91' + d + '" aria-label="Call ' + d + '">Call</a>' +
-             '<a class="contact-btn wa" href="https://wa.me/91' + d + '" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp ' + d + '">WhatsApp</a>' +
-             '</span></div>';
-    }).join("");
-    ov.innerHTML = '<div class="contact-card">' +
-      '<button class="contact-close" type="button" aria-label="Close">✕</button>' +
-      '<div class="contact-title">Contact ' + vdEsc(CFG.name || "us") + '</div>' +
-      '<div class="contact-sub">Call or message us on any of these numbers</div>' +
-      '<div class="contact-list">' + rows + '</div></div>';
-    ov.classList.add("open"); document.body.classList.add("vd-lock");
-    try { history.pushState({ contact: 1 }, ""); } catch (e) {}
-    ov.onclick = function (e) { if (e.target === ov) closeContact(); };
-    var c = ov.querySelector(".contact-close"); if (c) c.onclick = function () { closeContact(); };
   }
   function isHttp(u) { return typeof u === "string" && /^https?:\/\//i.test(u); }
   function addMedia(media) {

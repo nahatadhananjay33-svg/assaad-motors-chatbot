@@ -5,9 +5,11 @@ window.DEALER_CONFIG = {
   name: "Assad Motors",
   tagline: "Premium Pre-Owned Cars",
 
-  // Dealership contact numbers. The Call + WhatsApp header buttons open a popup
-  // listing EVERY number here (each with its own Call and WhatsApp action). Enter
-  // 10-digit numbers (with or without +91 / spaces — they are cleaned up).
+  // Dealership contact numbers. Each tap on the Call / WhatsApp header icon picks
+  // ONE of these numbers at RANDOM and goes straight to it, so traffic spreads
+  // evenly across all numbers (protects any single WhatsApp number from being
+  // flooded/blocked). Enter 10-digit numbers (with or without +91 / spaces —
+  // they are cleaned up). Add or remove numbers here anytime.
   contacts: ["8879936000", "8879937000", "8879942000", "8879961000"],
   instagram: "https://www.instagram.com/assad_motors/",
 
