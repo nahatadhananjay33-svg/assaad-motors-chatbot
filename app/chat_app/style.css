@@ -294,6 +294,43 @@ body.vd-lock { overflow: hidden; }
   cursor: pointer; margin-bottom: 12px;
 }
 .vd-back:hover { background: #e0e9ff; }
+
+/* ── Contact popup (dealership numbers) ── */
+.contact-overlay {
+  position: fixed; inset: 0; z-index: 1100; display: none;
+  background: rgba(20, 28, 40, .55); backdrop-filter: blur(2px);
+  align-items: center; justify-content: center; padding: 24px 16px;
+}
+.contact-overlay.open { display: flex; }
+.contact-card {
+  position: relative; background: #fff; color: var(--ink);
+  width: 100%; max-width: 420px; border-radius: var(--radius);
+  box-shadow: 0 12px 40px rgba(0,0,0,.28); padding: 20px 20px 22px;
+}
+.contact-close {
+  position: absolute; top: 12px; right: 12px; width: 30px; height: 30px;
+  border: 0; border-radius: 8px; background: var(--grey-bg); color: var(--ink-soft);
+  font-size: 15px; cursor: pointer; line-height: 1;
+}
+.contact-close:hover { background: #e9edf3; color: var(--ink); }
+.contact-title { font-size: 18px; font-weight: 700; padding-right: 32px; }
+.contact-sub { font-size: 13px; color: var(--ink-soft); margin: 2px 0 14px; }
+.contact-list { display: flex; flex-direction: column; gap: 10px; }
+.contact-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  flex-wrap: wrap; border: 1px solid var(--grey-line); border-radius: 12px;
+  padding: 10px 12px;
+}
+.contact-num { font-size: 15.5px; font-weight: 600; letter-spacing: .2px; }
+.contact-acts { display: flex; gap: 8px; }
+.contact-btn {
+  text-decoration: none; font-size: 13px; font-weight: 600;
+  padding: 7px 14px; border-radius: 999px;
+}
+.contact-btn.call { background: var(--blue-soft); color: var(--blue-dark); }
+.contact-btn.call:hover { background: #dbe6ff; }
+.contact-btn.wa { background: #e7f8ee; color: #128c4b; }
+.contact-btn.wa:hover { background: #d3f1e0; }
 .vd-head { border-bottom: 1px solid var(--grey-line); padding-bottom: 12px; margin-bottom: 12px; }
 .vd-title { font-size: 20px; font-weight: 700; }
 .vd-reg { display: inline-block; margin-top: 4px; font-size: 12px; font-weight: 600;

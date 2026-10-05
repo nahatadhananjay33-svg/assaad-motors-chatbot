@@ -5,9 +5,10 @@ window.DEALER_CONFIG = {
   name: "Assad Motors",
   tagline: "Premium Pre-Owned Cars",
 
-  // Contact links (top-right header buttons)
-  phone: "tel:+919029664381",
-  whatsapp: "https://wa.me/919029664381",
+  // Dealership contact numbers. The Call + WhatsApp header buttons open a popup
+  // listing EVERY number here (each with its own Call and WhatsApp action). Enter
+  // 10-digit numbers (with or without +91 / spaces — they are cleaned up).
+  contacts: ["8879936000", "8879937000", "8879942000", "8879961000"],
   instagram: "https://www.instagram.com/assad_motors/",
 
   // Logo image URL. Leave null to show the initials placeholder.
