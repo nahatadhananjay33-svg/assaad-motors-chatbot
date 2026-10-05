@@ -144,9 +144,11 @@ def build_detail(item, assets) -> Dict[str, Any]:
     # quote a junk number. Show a visit-the-showroom message instead of a bare
     # "Data not available" so the customer knows to come see the car.
     if not getattr(item, "price_quotable", False):
+        _price_text = ("Coming soon" if getattr(item, "price_coming_soon", False)
+                       else "On request — visit showroom, owner will confirm")
         for r in primary:
             if r.get("label") == "Price":
-                r["value"] = "On request — visit showroom, owner will confirm"
+                r["value"] = _price_text
                 break
     return {
         "status": "ok",

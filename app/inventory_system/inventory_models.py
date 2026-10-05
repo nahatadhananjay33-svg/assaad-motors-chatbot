@@ -160,6 +160,10 @@ class InventoryItem:
     price_inr: Optional[int] = None          # None when not quotable
     price_lakh: Optional[float] = None
     price_quotable: bool = False
+    # True when the RATE is a single-digit placeholder (e.g. "4"): the car is shown
+    # but its price reads "Coming soon". (A two-digit code like "44"/"33" instead
+    # marks the car as a placeholder so it is hidden entirely — see the loader.)
+    price_coming_soon: bool = False
 
     # ── advisory / derived ──
     insurance_hint: Optional[str] = None     # advisory only; never asserted

@@ -175,6 +175,7 @@ def public_vehicle(item) -> Dict[str, Any]:
         "body_type": item.body_type,
         "price_lakh": item.price_lakh if item.price_quotable else None,
         "price_quotable": item.price_quotable,
+        "price_coming_soon": getattr(item, "price_coming_soon", False),
         "km": item.km_driven,                                # None if unknown
     }
 
@@ -510,6 +511,8 @@ def _price_line(it: Any) -> str:
     label = " ".join(b for b in bits if b).strip() or (it.make_full or "Yeh gaadi")
     if it.price_quotable and it.price_lakh is not None:
         return f"{label} ₹{it.price_lakh:.2f} lakh."
+    if getattr(it, "price_coming_soon", False):
+        return f"{label} — iski price abhi coming soon hai."
     # No real (5-digit) price on file — never quote a junk number; invite a visit
     # and let the owner confirm the exact price.
     return (f"{label} — price ke liye ek baar showroom aa kar gaadi dekh lijiye, "

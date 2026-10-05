@@ -94,6 +94,7 @@ def _safe_fields(it: InventoryItem, q: Query, fired: List[str]) -> Dict:
         "owners": it.ownership_count,
         "price_lakh": None,
         "price_quotable": it.price_quotable,
+        "price_coming_soon": getattr(it, "price_coming_soon", False),
         "km": it.km_driven,                  # None -> hedge (G-KM)
     }
     if it.price_quotable and it.price_lakh is not None:
@@ -261,6 +262,8 @@ def _price_clause(it: InventoryItem, q: Query, fired: List[str]) -> str:
     # coded / unknown price -> never a number
     if "G-PRICE" not in fired:
         fired.append("G-PRICE")
+    if getattr(it, "price_coming_soon", False):
+        return " — iski price coming soon hai"
     return " — iska exact best price main confirm kar ke bata deta hoon"
 
 

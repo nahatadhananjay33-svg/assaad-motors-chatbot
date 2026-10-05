@@ -332,6 +332,37 @@ def parse_rate(raw: Any) -> Tuple[Optional[int], Optional[float], bool]:
     return value, round(value / 100000, 2), True
 
 
+def classify_price(raw: Any) -> str:
+    """How the chatbot should treat a RATE cell (owner spec 2026-10-05):
+      'show'        — a real price (>= ₹10,000 / 5+ digits): quote it as usual.
+      'coming_soon' — a SINGLE-digit placeholder (0-9, e.g. "4"): show the car but
+                      display "Coming soon" in place of the price. (3-4 digit sub-
+                      floor values, which do not occur in practice, map here too.)
+      'hide'        — a TWO-digit code (10-99, e.g. "44"/"33"): drop the car from
+                      the chatbot entirely (owner marks not-ready cars this way).
+      'unknown'     — blank / a non-numeric status word: existing on-request text.
+    """
+    if raw is None:
+        return "unknown"
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        value = int(raw)
+    else:
+        s = _clean(raw).upper()
+        if not s:
+            return "unknown"
+        digits = re.sub(r"[^\d]", "", s)
+        if not digits:
+            return "unknown"          # SCRAP / TBD / etc. — not a number at all
+        value = int(digits)
+    if value >= PRICE_FLOOR:
+        return "show"
+    if value < 10:                     # single digit (0-9)
+        return "coming_soon"
+    if value < 100:                    # double digit (10-99)
+        return "hide"
+    return "coming_soon"               # 3-4 digit sub-floor (does not occur)
+
+
 def parse_ownership(raw: Any) -> Optional[int]:
     s = _clean(raw)
     if s.isdigit():
@@ -636,13 +667,18 @@ def build_item(row: Tuple, *, source_sheet: str, as_of: str,
     model = normalize_model(_cell(row, "model"))
     color_norm, color_conf = normalize_color(_cell(row, "color"))
     price_inr, price_lakh, quotable = parse_rate(_cell(row, "rate"))
+    price_state = classify_price(_cell(row, "rate"))
+    price_coming_soon = (price_state == "coming_soon")
     loc_code, loc_type, viewable = classify_location(_cell(row, "location"))
 
-    # placeholder / non-car detection (risk R03)
+    # placeholder / non-car detection (risk R03). A two-digit RATE code ("44"/"33")
+    # marks a not-ready car the owner wants hidden -> treat it as a placeholder so
+    # sync quarantines it (owner spec 2026-10-05).
     is_placeholder = (
         not model
         or make_code == "CUST"
         or _clean(_cell(row, "color")).upper() == "REP"
+        or price_state == "hide"
     )
 
     stock_raw = _cell(row, "stock_no")
@@ -680,6 +716,7 @@ def build_item(row: Tuple, *, source_sheet: str, as_of: str,
         price_inr=price_inr,
         price_lakh=price_lakh,
         price_quotable=quotable,
+        price_coming_soon=price_coming_soon,
         insurance_hint=normalize_insurance(_cell(row, "insurance")),
         body_type=_body_type_for(model),
         # Seats come ONLY from the "Seats" Excel column (read via the ext-field

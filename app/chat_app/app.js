@@ -190,9 +190,10 @@
       var price = fmtPrice(v);
       if (price) { var p = document.createElement("div"); p.className = "car-price"; p.textContent = price; card.appendChild(p); }
       else {
-        // No real (5-digit) price on file — never show a junk number; invite a visit.
+        // No real (5-digit) price on file — never show a junk number. A single-digit
+        // placeholder ("4") shows "Coming soon"; everything else invites a visit.
         var pr = document.createElement("div"); pr.className = "car-price car-price-req";
-        pr.textContent = "Price on request";
+        pr.textContent = v.price_coming_soon ? "Coming soon" : "Price on request";
         card.appendChild(pr);
       }
       var chips = document.createElement("div"); chips.className = "car-chips";
