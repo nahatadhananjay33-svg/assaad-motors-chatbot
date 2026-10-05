@@ -334,6 +334,20 @@ def handle_upload(service: Any, body: bytes, content_type: str
                 os.remove(incoming + ".norm.xlsx")
             except OSError:
                 pass
+
+        # Media-preserving merge: carry photo/video/instagram/youtube links from the
+        # current live sheet forward into this upload, matched by CAR NUMB, so a
+        # re-upload that lacks the Media-panel photo links never wipes them. New links
+        # win when provided. Never fatal — on any problem the upload proceeds as-is.
+        try:
+            from inventory_normalize import preserve_media_from_previous
+            if os.path.exists(p["live"]):
+                preserve_media_from_previous(incoming, p["live"])
+        except Exception:
+            try:
+                os.remove(incoming + ".merge.xlsx")
+            except OSError:
+                pass
         v = validate_workbook(incoming)
         if v["errors"] or int(v.get("vehicles_loaded") or 0) <= 0:
             try:

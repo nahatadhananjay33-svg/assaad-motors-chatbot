@@ -21,6 +21,7 @@ This never raises for ordinary data problems; callers still validate the result.
 """
 from __future__ import annotations
 
+import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -418,3 +419,207 @@ def normalize_to_canonical(src_path: str, out_path: str) -> Optional[Dict[str, A
         }
     finally:
         wb.close()
+
+
+# ---------------------------------------------------------------------------
+# Media-preserving merge on re-upload
+# ---------------------------------------------------------------------------
+# When the owner re-uploads a fresh Excel, it replaces the whole live sheet. But
+# photos/videos added through the Media panel live ONLY in the live sheet (their
+# Supabase URLs are written into the EXTERIOR/VIDEO columns), and the owner's own
+# file does not contain them — so a naive replace would wipe every photo for every
+# car that is common to both files. `preserve_media_from_previous` carries that
+# media forward: for each car matched by CAR NUMB, for each media group, if the NEW
+# upload has no links in that group the PREVIOUS links are kept. New links always
+# win when the owner provides them.
+
+_MIN_SLOTS = {"INSTAGRAM": 6, "EXTERIOR": 6, "YOUTUBE": 6}   # others: only if data exists
+_GROUP_ORDER = ["INSTAGRAM", "EXTERIOR", "INTERIOR", "VIDEO", "YOUTUBE"]
+
+
+def _is_media_url(v: Any) -> bool:
+    return v is not None and str(v).strip().lower().startswith(("http://", "https://"))
+
+
+def _reg_key(v: Any) -> str:
+    return "" if v is None else str(v).strip().upper().replace(" ", "")
+
+
+def _classify_media_columns(ws) -> Tuple[Dict[str, List[int]], List[int]]:
+    """For a canonical sheet (core at cols 1..N_CORE, header row 2), return
+    ({group: [cols...]}, [non-media extra cols]) for everything past the core."""
+    maxc = ws.max_column or 0
+    headers = [(c, ws.cell(row=2, column=c).value) for c in range(1, maxc + 1)]
+    media: Dict[str, List[int]] = {}
+    nonmedia: List[int] = []
+    i = 0
+    while i < len(headers):
+        c, h = headers[i]
+        if c <= N_CORE:
+            i += 1
+            continue
+        kw = _media_kw(h)
+        if kw:
+            cols = [c]
+            j = i + 1
+            while j < len(headers) and str(headers[j][1] or "").strip().isdigit():
+                cols.append(headers[j][0])
+                j += 1
+            media.setdefault(kw, []).extend(cols)
+            i = j
+        else:
+            nonmedia.append(c)
+            i += 1
+    return media, nonmedia
+
+
+def _reg_media_map(ws, media_cols: Dict[str, List[int]]) -> Dict[str, Dict[str, List[str]]]:
+    """{reg: {group: [urls...]}} for every data row (row 4+) with a real CAR NUMB."""
+    out: Dict[str, Dict[str, List[str]]] = {}
+    for r in range(4, (ws.max_row or 3) + 1):
+        reg = _reg_key(ws.cell(row=r, column=CAR_NUMB_IDX + 1).value)
+        if len(reg) < 6 or "E.G" in reg:
+            continue
+        gm: Dict[str, List[str]] = {}
+        for group, cols in media_cols.items():
+            urls = [str(ws.cell(row=r, column=c).value).strip()
+                    for c in cols if _is_media_url(ws.cell(row=r, column=c).value)]
+            if urls:
+                gm[group] = urls
+        out[reg] = gm
+    return out
+
+
+def _looks_canonical(ws) -> bool:
+    return _ALIAS.get(_norm(ws.cell(row=2, column=CAR_NUMB_IDX + 1).value)) == CAR_NUMB_IDX
+
+
+def preserve_media_from_previous(new_path: str, prev_path: str) -> Optional[Dict[str, Any]]:
+    """Carry media forward from the previous live canonical workbook (`prev_path`)
+    into the freshly-normalised new workbook (`new_path`), matched by CAR NUMB, and
+    rewrite `new_path` in place. New media wins when present; otherwise the previous
+    media is kept so Media-panel photos survive a re-upload. Returns a small report,
+    or None (new file left untouched) if either file is missing/not canonical."""
+    import openpyxl
+
+    if not prev_path or not os.path.exists(prev_path):
+        return None
+    try:
+        nwb = openpyxl.load_workbook(new_path, data_only=True)
+    except Exception:
+        return None
+    pwb = None
+    try:
+        if "DNJ" not in nwb.sheetnames:
+            return None
+        nds = nwb["DNJ"]
+        if not _looks_canonical(nds):
+            return None
+        try:
+            pwb = openpyxl.load_workbook(prev_path, data_only=True)
+        except Exception:
+            return None
+        if "DNJ" not in pwb.sheetnames:
+            return None
+        pds = pwb["DNJ"]
+        if not _looks_canonical(pds):
+            return None
+
+        new_media_cols, nonmedia = _classify_media_columns(nds)
+        prev_media_cols, _ = _classify_media_columns(pds)
+        new_media = _reg_media_map(nds, new_media_cols)
+        prev_media = _reg_media_map(pds, prev_media_cols)
+
+        new_regs = list(new_media.keys())
+
+        # groups to emit: the standard ones + any present in the new file + any that
+        # a matched car carries forward from the previous file (e.g. VIDEO photos).
+        groups = set(_MIN_SLOTS) | set(new_media_cols)
+        for reg in new_regs:
+            groups |= set(prev_media.get(reg, {}))
+        final_groups = [g for g in _GROUP_ORDER if g in groups]
+
+        # merged media per reg, and the slot count each group needs (no truncation).
+        merged: Dict[str, Dict[str, List[str]]] = {}
+        slots: Dict[str, int] = {g: _MIN_SLOTS.get(g, 0) for g in final_groups}
+        carried = 0
+        for reg in new_regs:
+            nm = new_media.get(reg, {})
+            pm = prev_media.get(reg, {})
+            m: Dict[str, List[str]] = {}
+            for g in final_groups:
+                if nm.get(g):
+                    m[g] = nm[g]
+                elif pm.get(g):
+                    m[g] = pm[g]
+                    carried += 1
+                else:
+                    m[g] = []
+                if len(m[g]) > slots[g]:
+                    slots[g] = len(m[g])
+            merged[reg] = m
+
+        # column plan: core (1..N_CORE), non-media extras, then media groups
+        col_specs: List[Tuple] = [("copy", c) for c in range(1, N_CORE + 1)]
+        col_specs += [("copy", c) for c in nonmedia]
+        for g in final_groups:
+            for k in range(slots[g]):
+                col_specs.append(("media", g, k))
+
+        out = openpyxl.Workbook()
+        od = out.active
+        od.title = "DNJ"
+        for oc, spec in enumerate(col_specs, start=1):
+            if spec[0] == "copy":
+                od.cell(row=2, column=oc, value=nds.cell(row=2, column=spec[1]).value)
+                hint = nds.cell(row=3, column=spec[1]).value
+                if hint is not None and str(hint).strip() != "":
+                    od.cell(row=3, column=oc, value=hint)
+            else:
+                _, g, k = spec
+                od.cell(row=2, column=oc, value=(g + " 1" if k == 0 else str(k + 1)))
+
+        out_r = 4
+        rows_out = 0
+        for r in range(4, (nds.max_row or 3) + 1):
+            core_vals = [nds.cell(row=r, column=c).value for c in range(1, N_CORE + 1)]
+            reg = _reg_key(nds.cell(row=r, column=CAR_NUMB_IDX + 1).value)
+            if all(v is None or str(v).strip() == "" for v in core_vals) and not reg:
+                continue
+            m = merged.get(reg, {})
+            for oc, spec in enumerate(col_specs, start=1):
+                if spec[0] == "copy":
+                    v = nds.cell(row=r, column=spec[1]).value
+                    if v is not None and str(v).strip() != "":
+                        od.cell(row=out_r, column=oc, value=v)
+                else:
+                    _, g, k = spec
+                    urls = m.get(g, [])
+                    if k < len(urls):
+                        od.cell(row=out_r, column=oc, value=urls[k])
+            out_r += 1
+            rows_out += 1
+
+        # carry the DONT TOUCH SOLD sheet from the new workbook untouched
+        if SOLD_SHEET in nwb.sheetnames:
+            src = nwb[SOLD_SHEET]
+            dst = out.create_sheet(SOLD_SHEET)
+            for row in src.iter_rows():
+                for cell in row:
+                    if cell.value is not None:
+                        dst.cell(row=cell.row, column=cell.column, value=cell.value)
+
+        tmp = new_path + ".merge.xlsx"
+        out.save(tmp)
+        os.replace(tmp, new_path)
+        matched = sum(1 for reg in new_regs if reg in prev_media)
+        return {
+            "rows_out": rows_out,
+            "cars_matched_with_previous": matched,
+            "media_groups_carried": carried,
+            "slots": {g: slots[g] for g in final_groups},
+        }
+    finally:
+        nwb.close()
+        if pwb is not None:
+            pwb.close()

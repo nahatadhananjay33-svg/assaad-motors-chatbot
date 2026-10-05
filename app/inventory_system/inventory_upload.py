@@ -196,6 +196,18 @@ def handle_upload(service: Any, body: bytes, content_type: str) -> Tuple[int, Di
     except Exception:
         _silent_remove(incoming + ".norm.xlsx")   # fall back to the original file
 
+    # 0b) MEDIA-PRESERVING MERGE — carry photo/video/instagram/youtube links from the
+    #     CURRENT live sheet forward into this upload, matched by CAR NUMB, so a
+    #     re-upload that lacks the Media-panel photo links never wipes them. New
+    #     links win when the owner provides them. Never fatal — on any problem the
+    #     upload proceeds as-is.
+    try:
+        from inventory_normalize import preserve_media_from_previous
+        if os.path.exists(xlsx):
+            preserve_media_from_previous(incoming, xlsx)
+    except Exception:
+        _silent_remove(incoming + ".merge.xlsx")
+
     # 1) validate the candidate (live file still untouched)
     v = validate_workbook(incoming)
     if v["errors"]:
