@@ -70,3 +70,12 @@ venv/
 
 # dev reports referencing secret bucket/key config
 bucket_*.md
+
+# ── loose data-workbook snapshots & audit artifacts (not code; the live workbook
+#    lives in ./data on the server, tracked seeds are IVR_Sheet.xlsx /
+#    *_TEMPLATE.xlsx). Keep dated/one-off copies out of code history. ──
+Assad_Motors_Inventory_CURRENT_*.xlsx
+*_CONVERTED_*.xlsx
+IVR_Sheet_OWNER_TEMPLATE.xlsx
+app/_schema_backups/
+filter_audit/
