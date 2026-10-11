@@ -253,17 +253,26 @@
     });
     return h + '</div>';
   }
-  // `fromPop` = true when the browser/phone Back button triggered the close (a
-  // popstate already happened, so we must NOT call history.back again). Otherwise
-  // (in-app Back button, backdrop, Esc) we pop the history entry we pushed on open,
-  // so the Back button always goes exactly ONE step back — to the car list, not the
-  // Welcome screen.
-  function closeVehicleDetail(fromPop) {
+  // Which app screen the history cursor is on: "guard" (below Welcome, used to trap
+  // the exit), "home" (Welcome), "chat" (car list), "vd" (detail overlay).
+  function currentScreen() {
+    var s = history.state;
+    return (s && s.app === "am") ? s.screen : null;
+  }
+  // UI-only close (no history change) — used by the Back-button handler, which has
+  // already popped the overlay's history entry for us.
+  function closeVdUI() {
     var ov = $("vdetail");
-    if (ov) { ov.classList.remove("open"); document.body.classList.remove("vd-lock"); }
-    if (!fromPop) {
-      try { if (history.state && history.state.vd) history.back(); } catch (e) {}
-    }
+    if (ov) ov.classList.remove("open");
+    document.body.classList.remove("vd-lock");
+  }
+  // User-initiated close (the ← Back button, backdrop tap, or Esc). We pop the
+  // history entry pushed when the overlay opened, so one Back press lands exactly on
+  // the car list — never skipping straight to Welcome. (Any click event passed as an
+  // argument is ignored on purpose.)
+  function closeVehicleDetail() {
+    closeVdUI();
+    if (currentScreen() === "vd") { try { history.back(); } catch (e) {} }
   }
   function openVehicleDetail(reg) {
     if (!reg) return;
@@ -271,9 +280,13 @@
     if (!ov) { ov = document.createElement("div"); ov.id = "vdetail"; ov.className = "vd-overlay"; document.body.appendChild(ov); }
     ov.innerHTML = '<div class="vd-panel"><div class="vd-msg">Loading…</div></div>';
     ov.classList.add("open"); document.body.classList.add("vd-lock");
-    // Push a history entry so the hardware/browser Back button closes THIS overlay
-    // (one step back) instead of leaving the chat and resetting to Welcome.
-    try { history.pushState({ vd: 1 }, ""); } catch (e) {}
+    // Make sure the list sits on the stack as "chat", then push the overlay as "vd",
+    // so the hardware/browser Back button closes THIS overlay (one step back) and the
+    // next Back returns to the list — not straight to Welcome.
+    if (currentScreen() === "home" || currentScreen() === null) {
+      try { history.pushState({ app: "am", screen: "chat" }, ""); } catch (e) {}
+    }
+    try { history.pushState({ app: "am", screen: "vd" }, ""); } catch (e) {}
     ov.onclick = function (e) { if (e.target === ov) closeVehicleDetail(); };
     fetch(API + "/vehicle?reg=" + encodeURIComponent(reg))
       .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
@@ -296,6 +309,9 @@
     if (d.registration_no) h += '<div class="vd-reg">' + vdEsc(d.registration_no) + '</div>';
     var sub = [d.make, d.variant].filter(Boolean).join(" • ");
     if (sub) h += '<div class="vd-sub">' + vdEsc(sub) + '</div>';
+    // Parking-slot locator: shown only when the backend sends a real slot (e.g. "Y5")
+    // so a visiting customer can walk straight to the car.
+    if (d.parking_slot) h += '<div class="vd-slot">📍 Parking spot: <b>' + vdEsc(d.parking_slot) + '</b></div>';
     h += '</div><div class="vd-primary">';
     (d.primary || []).forEach(function (r) {
       h += '<div class="vd-p"><span class="vd-pk">' + vdEsc(r.label) + '</span><span class="vd-pv">' + vdEsc(r.value) + '</span></div>';
@@ -341,20 +357,63 @@
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") { closeVehicleDetail(); closeContact(); }
   });
-  // Browser / phone Back button while an overlay is open → close it (one step back).
-  window.addEventListener("popstate", function () {
-    var ov = $("vdetail");
-    if (ov && ov.classList.contains("open")) closeVehicleDetail(true);
-    var cp = $("contactPop");
-    if (cp && cp.classList.contains("open")) closeContact(true);
+  // Single Back-button handler for the whole app. The browser has already moved the
+  // history cursor; we read the new screen and reconcile the UI:
+  //   vd   → list  : close the detail overlay (we're back on the car list)
+  //   list → home  : show the Welcome screen again (the "second Back")
+  //   home → guard : press-back-again-to-exit guard (don't leave on one press)
+  window.addEventListener("popstate", function (e) {
+    var scr = (e.state && e.state.app === "am") ? e.state.screen : "guard";
+    var ov = $("vdetail"); if (ov && ov.classList.contains("open")) closeVdUI();
+    var cp = $("contactPop"); if (cp && cp.classList.contains("open")) closeContactUI();
+    if (scr !== "guard") { exitArmed = false; hideExitToast(); }
+    if (scr === "home") { showWelcomeScreen(); return; }
+    if (scr === "guard") { handleHomeBackExit(); return; }
+    // "chat" / "vd": now on the car list — overlay (if any) already closed above.
   });
 
   /* ── legacy contact-overlay closer (overlay no longer opened; kept as a safe
-     no-op for the Escape / Back handlers) ── */
-  function closeContact(fromPop) {
+     no-op for the Escape / Back handlers). UI-only — no history change. ── */
+  function closeContactUI() {
     var ov = $("contactPop");
-    if (ov) { ov.classList.remove("open"); document.body.classList.remove("vd-lock"); }
-    if (!fromPop) { try { if (history.state && history.state.contact) history.back(); } catch (e) {} }
+    if (ov) ov.classList.remove("open");
+    document.body.classList.remove("vd-lock");
+  }
+  function closeContact() { closeContactUI(); }
+
+  /* ── app navigation state (Welcome ⇄ car list ⇄ detail) + exit guard ── */
+  var exitArmed = false, exitTimer = null;
+  function showExitToast() {
+    var t = $("backToast");
+    if (!t) {
+      t = document.createElement("div");
+      t.id = "backToast"; t.className = "back-toast";
+      t.textContent = "Press back again to exit";
+      document.body.appendChild(t);
+    }
+    t.classList.add("show");
+  }
+  function hideExitToast() { var t = $("backToast"); if (t) t.classList.remove("show"); }
+  // Back pressed on the Welcome screen: the first press is swallowed (we re-arm the
+  // history guard and warn); a second press within 2s is allowed to leave the app.
+  function handleHomeBackExit() {
+    if (exitArmed) {
+      exitArmed = false; hideExitToast();
+      try { history.back(); } catch (e) {}
+      return;
+    }
+    exitArmed = true;
+    try { history.pushState({ app: "am", screen: "home" }, ""); } catch (e) {}
+    showExitToast();
+    clearTimeout(exitTimer);
+    exitTimer = setTimeout(function () { exitArmed = false; hideExitToast(); }, 2000);
+  }
+  // Second Back from the car list returns here. Show a fresh Welcome view; the
+  // previous conversation is already saved and appears under Recent chats.
+  function showWelcomeScreen() {
+    closeVdUI(); closeContactUI(); closeDrawer();
+    newConversation();
+    if (input) input.blur();
   }
   function isHttp(u) { return typeof u === "string" && /^https?:\/\//i.test(u); }
   function addMedia(media) {
@@ -437,6 +496,11 @@
     text = (text || "").trim().slice(0, MAX_LEN);
     if (!text || busy) return;
     hideWelcome();
+    // Leaving the Welcome screen for the car-list view: record a "chat" step so the
+    // phone Back button returns here to Welcome (not straight out of the app).
+    if (currentScreen() === "home" || currentScreen() === null) {
+      try { history.pushState({ app: "am", screen: "chat" }, ""); } catch (e) {}
+    }
     if (!current) newConversation();
     if (!current.title) { current.title = text.slice(0, 42); }
     addUserMsg(text);
@@ -557,6 +621,12 @@
   })();
 
   /* ── boot ── */
+  // Seed the history stack: a "guard" entry below the "home" (Welcome) entry so the
+  // first Back press on Welcome can be trapped for press-back-again-to-exit.
+  try {
+    history.replaceState({ app: "am", screen: "guard" }, "");
+    history.pushState({ app: "am", screen: "home" }, "");
+  } catch (e) {}
   renderRecents();
   newConversation();
   input.focus();

@@ -26,12 +26,47 @@ admin panel, or the Excel schema. It is additive and read-only.
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import parse_qs
 
 
 def _norm_reg(reg: str) -> str:
     return "".join(str(reg or "").split()).upper().replace("-", "")
+
+
+# ── social-link platform detection (by URL, not by Excel column) ──────────────
+_YT_RE = re.compile(r"(?:youtube\.com|youtu\.be)", re.I)
+_IG_RE = re.compile(r"instagram\.com", re.I)
+
+
+def _classify_social(ig_list, yt_list) -> Tuple[List[str], List[str]]:
+    """Re-bucket a vehicle's social links by their ACTUAL URL platform, so a link
+    pasted into the wrong column (e.g. a YouTube URL in an INSTAGRAM slot) is still
+    labelled correctly — YouTube URLs show as YouTube, Instagram URLs as Instagram.
+    Order is preserved within each platform, duplicates are dropped, and a link
+    whose domain is neither keeps the column it came from."""
+    ig_out: List[str] = []
+    yt_out: List[str] = []
+    seen = set()
+
+    def place(u, origin: str) -> None:
+        s = str(u or "").strip()
+        if not s or s in seen:
+            return
+        seen.add(s)
+        if _YT_RE.search(s):
+            yt_out.append(s)
+        elif _IG_RE.search(s):
+            ig_out.append(s)
+        else:
+            (yt_out if origin == "yt" else ig_out).append(s)
+
+    for u in (ig_list or []):
+        place(u, "ig")
+    for u in (yt_list or []):
+        place(u, "yt")
+    return ig_out, yt_out
 
 
 # ── formatters (value -> display string, or None to hide) ────────────────────
@@ -139,6 +174,20 @@ def build_detail(item, assets) -> Dict[str, Any]:
     videos = list(assets.videos) if assets else []
     veh_ig = list(assets.instagram) if assets else []
     veh_yt = list(assets.youtube) if assets else []
+    # Label links by their real platform (YouTube URL in an IG column -> YouTube).
+    veh_ig, veh_yt = _classify_social(veh_ig, veh_yt)
+    # Parking-slot locator (owner-approved 2026-10-11): expose ONLY a physical
+    # parking slot such as "Y5"/"L1" so a visiting customer can walk straight to the
+    # car. Custody word-codes (POLI/IMM/REP/NGP/ILL …) and any location flagged
+    # non-customer-viewable are NEVER shown — gated on location_type == "slot" AND
+    # customer_viewable. ("slot" is LocationType.SLOT in inventory_models.)
+    parking_slot = None
+    try:
+        if (getattr(item, "location_type", None) == "slot"
+                and getattr(item, "customer_viewable", False)):
+            parking_slot = _s(getattr(item, "location_code", None))
+    except Exception:
+        parking_slot = None
     primary = _rows(item, _PRIMARY, keep_blank_as_na=True)
     # A price under 5 digits (status codes / < ₹10,000) is NOT a real price — never
     # quote a junk number. Show a visit-the-showroom message instead of a bare
@@ -157,6 +206,7 @@ def build_detail(item, assets) -> Dict[str, Any]:
         "make": item.make_full,
         "model": item.model,
         "variant": _s(item.variant),
+        "parking_slot": parking_slot,
         "primary": primary,
         "details": _rows(item, _DETAILS, keep_blank_as_na=False),
         "specs": _rows(item, _SPECS, keep_blank_as_na=False),
