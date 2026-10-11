@@ -190,7 +190,12 @@ def read_media_index(path: str, sheet: str = DNJ_SHEET) -> Dict[str, List[Invent
             raise ValueError(f"Sheet '{sheet}' not found in {path}. Sheets: {wb.sheetnames}")
         ws = wb[sheet]
 
-        header = [ws.cell(HEADER_ROW, c).value for c in range(1, ws.max_column + 1)]
+        # Read the header row via iter_rows rather than ws.max_column: in
+        # read_only mode openpyxl returns None for max_column when the writer omits
+        # the cached <dimension> (ONLYOFFICE's save does), which would crash the
+        # `range(1, None + 1)`. iter_rows yields the row's real populated cells.
+        header = list(next(ws.iter_rows(min_row=HEADER_ROW, max_row=HEADER_ROW,
+                                        values_only=True), ()))
         layout = detect_media_layout(header)
         if not layout.has_media_columns() or layout.car_col is None:
             return {}

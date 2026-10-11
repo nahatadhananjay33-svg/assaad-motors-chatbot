@@ -85,6 +85,7 @@ PATH_PERMISSIONS: Dict[str, str] = {
     "/admin/owner/restore_latest": "excel.rollback",   # undo last edit (owner-only)
     "/admin/owner/delete_backup": "excel.delete_backup",
     "/admin/owner/download": "excel.download",       # owner-only (has "*")
+    "/admin/owner/editor2_ticket": "excel.upload",   # open real editor = replace file
     # Customer conversation log — read-only view + export. Owner-only: no role
     # below lists "chatlogs.view", so only the Owner (ALL) is admitted; every
     # other staff role and the Developer get 403.

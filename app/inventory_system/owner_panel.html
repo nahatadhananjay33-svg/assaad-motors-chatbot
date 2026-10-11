@@ -672,11 +672,30 @@
       }).catch(function (e) { setInvMsg("Network problem: " + esc(e.message), "err"); });
   }
   $("openInvBtn").onclick = function () {
-    // Local dev serves the editor on its own :8010; in production the editor is
-    // proxied same-origin at /editor (nginx). Pick the right one automatically.
-    var h = location.hostname;
-    var url = (h === "localhost" || h === "127.0.0.1") ? "http://localhost:8010/editor" : "/editor";
-    window.open(url, "_blank");
+    // Real spreadsheet editor (ONLYOFFICE) at /editor2. The page is a top-level
+    // navigation and cannot carry the session header, so mint a short-lived
+    // ticket from an authenticated endpoint, then open /editor2?ticket=.
+    // Open the blank tab synchronously (inside the click gesture) so popup
+    // blockers don't stop it, then point it at the editor once we have the ticket.
+    var w = window.open("", "_blank");
+    try { if (w && w.document) w.document.write("Opening the Excel editor…"); } catch (e) {}
+    setInvMsg("Opening the Excel editor…", "info");
+    fetch(baseUrl() + "/admin/owner/editor2_ticket", { headers: headers() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ticket) {
+          var url = baseUrl() + "/editor2?ticket=" + encodeURIComponent(d.ticket);
+          if (w) { w.location.href = url; } else { window.open(url, "_blank"); }
+          setInvMsg("✓ Excel editor opened in a new tab. Edit, then just close the tab — the chatbot updates automatically.", "ok");
+        } else {
+          if (w) { try { w.close(); } catch (e) {} }
+          setInvMsg("✗ Could not open the editor: " + esc((d && d.detail) || "no ticket returned") + ".", "err");
+        }
+      })
+      .catch(function (e) {
+        if (w) { try { w.close(); } catch (_) {} }
+        setInvMsg("Network problem opening the editor: " + esc(e.message), "err");
+      });
   };
   $("openMediaBtn").onclick = function () { location.href = "media_admin.html"; };
   $("dlInvBtn").onclick = function () { downloadExcel("live"); };

@@ -24,7 +24,8 @@ services:
       # ── ONLYOFFICE real-XLSX editor integration (/editor2) ──
       - ONLYOFFICE_JWT_SECRET=${ONLYOFFICE_JWT_SECRET}
       - ONLYOFFICE_APP_INTERNAL=http://app:8000  # document server -> this app
-      - ONLYOFFICE_PUBLIC_PATH=                    # doc server hosted at root prefixes (nginx)
+      - ONLYOFFICE_INTERNAL=http://onlyoffice     # this app -> doc server (fetch saved file)
+      - ONLYOFFICE_PUBLIC_PATH=                    # doc server at root prefixes (socket needs root)
       - EDITOR2_TEST_OPEN=${EDITOR2_TEST_OPEN:-}  # isolated test: open page w/o ticket
       - EDITOR2_WORKBOOK=${EDITOR2_WORKBOOK:-}    # isolated test: save to a COPY
     volumes:
@@ -42,7 +43,7 @@ services:
     image: onlyoffice/documentserver:8.1.1
     restart: unless-stopped
     environment:
-      - JWT_ENABLED=true
+      - JWT_ENABLED=${ONLYOFFICE_JWT_ENABLED:-true}
       - JWT_SECRET=${ONLYOFFICE_JWT_SECRET}
       - JWT_HEADER=Authorization
       - JWT_IN_BODY=true

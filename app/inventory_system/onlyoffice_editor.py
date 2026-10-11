@@ -17,6 +17,7 @@ PAGE itself is gated upstream (nginx / owner session) — see chat_api wiring.
 No external service, no LLM.
 """
 import os, json, hmac, hashlib, base64, urllib.request, shutil, logging, datetime
+import urllib.parse
 
 try:
     import inventory_upload           # reuse the upload validator (DNJ sheet, col N, loads)
@@ -27,6 +28,13 @@ except Exception:                     # pragma: no cover
 ONLYOFFICE_PUBLIC = os.environ.get("ONLYOFFICE_PUBLIC_PATH", "/onlyoffice")
 # internal URL the document server uses to reach THIS app (private docker network)
 APP_INTERNAL = os.environ.get("ONLYOFFICE_APP_INTERNAL", "http://app:8000")
+# internal URL of the ONLYOFFICE document server itself (docker service name).
+# The save callback hands us a saved-file URL built from the BROWSER's Host
+# header (e.g. https://public-domain/cache/files/...). The app container can't
+# reach that public HTTPS address from inside the docker network, so we rewrite
+# the scheme+host to this internal address and fetch /cache/... over the private
+# network. Path + query (md5/expires/shardkey) are host-independent.
+ONLYOFFICE_INTERNAL = os.environ.get("ONLYOFFICE_INTERNAL", "http://onlyoffice")
 JWT_SECRET = os.environ.get("ONLYOFFICE_JWT_SECRET", "")
 
 log = logging.getLogger("chat")
@@ -62,6 +70,20 @@ def jwt_verify(token: str):
         return json.loads(_b64u_dec(p))
     except Exception:
         return None
+
+
+def _internalize(url: str) -> str:
+    """Rewrite a document-server cache URL from its public host to the internal
+    DS address so the app container can fetch it over the private docker network.
+    Only /cache/... (doc-server-served) URLs are rewritten; anything else is left
+    as-is (returned unchanged)."""
+    try:
+        u = urllib.parse.urlsplit(url)
+        b = urllib.parse.urlsplit(ONLYOFFICE_INTERNAL)
+        # keep path (incl. the cache prefix) + query; swap scheme/host/port only
+        return urllib.parse.urlunsplit((b.scheme, b.netloc, u.path, u.query, ""))
+    except Exception:
+        return url
 
 
 def _doc_key(path: str) -> str:
@@ -127,6 +149,10 @@ def handle_callback(service, body: bytes, headers: dict) -> dict:
         data = json.loads(body or b"{}")
     except Exception:
         return {"error": 1}
+    log.info(json.dumps({"event": "editor2_callback_in",
+                         "status": data.get("status"),
+                         "has_url": bool(data.get("url")),
+                         "has_token": bool(data.get("token"))}))
     if JWT_SECRET:
         tok = data.get("token")
         if not tok:
@@ -148,10 +174,12 @@ def handle_callback(service, body: bytes, headers: dict) -> dict:
 
 def _apply_save(service, url: str) -> None:
     """Download the edited workbook, validate, back up, atomically replace, refresh."""
+    fetch_url = _internalize(url)
     try:
-        edited = urllib.request.urlopen(url, timeout=90).read()
+        edited = urllib.request.urlopen(fetch_url, timeout=90).read()
     except Exception as e:
-        log.error(json.dumps({"event": "editor2_fetch_fail", "detail": str(e)}))
+        log.error(json.dumps({"event": "editor2_fetch_fail", "detail": str(e),
+                              "fetch_url": fetch_url}))
         return
     xlsx = _wb(service)
     incoming = xlsx + ".oo_incoming.xlsx"
@@ -163,7 +191,10 @@ def _apply_save(service, url: str) -> None:
         if inventory_upload is not None:
             v = inventory_upload.validate_workbook(incoming)
             if v["errors"] or int(v.get("vehicles_loaded") or 0) <= 0:
-                os.remove(incoming)
+                try:
+                    os.replace(incoming, xlsx + ".rejected.xlsx")  # keep for diagnosis
+                except OSError:
+                    pass
                 log.error(json.dumps({"event": "editor2_save_rejected",
                                       "errors": v["errors"]}))
                 return

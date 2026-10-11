@@ -344,6 +344,21 @@ def route(method: str, path: str, body: bytes, service: ChatService,
             _log(ACCESS_LOG, logging.ERROR, "owner_download_error", error=str(e))
             return 500, {"error": "owner_download_failed", "detail": str(e)}
 
+    # ── Mint a short-lived ticket that authorizes opening the ONLYOFFICE editor
+    #    page (/editor2). The page is a top-level navigation (window.open) that
+    #    cannot carry the X-Session-Token header, so the authenticated panel
+    #    fetches this ticket first and passes it as ?ticket=. Gated by
+    #    excel.upload in permissions.py (same capability as replacing the file). ──
+    if method == "GET" and path == "/admin/owner/editor2_ticket":
+        try:
+            import onlyoffice_editor as OE
+            ticket = OE.jwt_sign({"purpose": "editor2",
+                                  "exp": int(time.time()) + 120})
+            return 200, {"ticket": ticket}
+        except Exception as e:
+            _log(ACCESS_LOG, logging.ERROR, "editor2_ticket_error", error=str(e))
+            return 500, {"error": "editor2_ticket_failed", "detail": str(e)}
+
     # ── admin: Owner customer-conversation log (read-only + export, owner-only) ──
     if method == "GET" and path == "/admin/owner/chat_logs":
         try:
@@ -442,7 +457,8 @@ def route(method: str, path: str, body: bytes, service: ChatService,
                 "/admin/owner/status", "/admin/owner/upload",
                 "/admin/owner/rollback", "/admin/owner/delete_backup",
                 "/admin/owner/validate", "/admin/owner/restore_latest",
-                "/admin/owner/download", "/admin/owner/chat_logs",
+                "/admin/owner/download", "/admin/owner/editor2_ticket",
+                "/admin/owner/chat_logs",
                 "/admin/owner/chat_logs/detail", "/admin/owner/chat_logs/export",
                 "/admin/users/list", "/admin/users/create", "/admin/users/update",
                 "/admin/users/set_active", "/admin/users/reset_password",
