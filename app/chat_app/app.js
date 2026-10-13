@@ -222,11 +222,11 @@
           var c = document.createElement("span"); c.className = "car-chip"; c.textContent = x;
           chips.appendChild(c);
         });
-      // Parking-slot locator chip (only when the car has a real slot) — so the
+      // Location chip (whenever the car has a customer-viewable location) — so the
       // customer sees where to find it right in the list, not only after opening.
-      if (v.parking_slot) {
+      if (v.location) {
         var sc = document.createElement("span");
-        sc.className = "car-chip car-slot"; sc.textContent = "📍 " + v.parking_slot;
+        sc.className = "car-chip car-slot"; sc.textContent = "📍 " + v.location;
         chips.appendChild(sc);
       }
       card.appendChild(chips);
@@ -316,9 +316,9 @@
     if (d.registration_no) h += '<div class="vd-reg">' + vdEsc(d.registration_no) + '</div>';
     var sub = [d.make, d.variant].filter(Boolean).join(" • ");
     if (sub) h += '<div class="vd-sub">' + vdEsc(sub) + '</div>';
-    // Parking-slot locator: shown only when the backend sends a real slot (e.g. "Y5")
-    // so a visiting customer can walk straight to the car.
-    if (d.parking_slot) h += '<div class="vd-slot">📍 Parking spot: <b>' + vdEsc(d.parking_slot) + '</b></div>';
+    // Location locator: shown whenever the backend sends a customer-viewable
+    // location (slot "Z2", zone "L"/"W"/"F", or a tag) so the customer can find it.
+    if (d.location) h += '<div class="vd-slot">📍 Location: <b>' + vdEsc(d.location) + '</b></div>';
     h += '</div><div class="vd-primary">';
     (d.primary || []).forEach(function (r) {
       h += '<div class="vd-p"><span class="vd-pk">' + vdEsc(r.label) + '</span><span class="vd-pv">' + vdEsc(r.value) + '</span></div>';

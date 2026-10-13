@@ -142,7 +142,7 @@ class TestSecurityAndMedia(VehicleDetailBase):
         _, d = self._get(self.items[0].registration_no)
         self.assertEqual(set(d.keys()), {
             "status", "registration_no", "title", "make", "model", "variant",
-            "parking_slot", "primary", "details", "specs", "media", "links"})
+            "location", "primary", "details", "specs", "media", "links"})
 
     def test_media_is_scoped_to_the_vehicle(self):
         # media dict is always present and only ever http(s) urls (or empty)

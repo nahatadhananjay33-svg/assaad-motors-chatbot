@@ -176,18 +176,16 @@ def build_detail(item, assets) -> Dict[str, Any]:
     veh_yt = list(assets.youtube) if assets else []
     # Label links by their real platform (YouTube URL in an IG column -> YouTube).
     veh_ig, veh_yt = _classify_social(veh_ig, veh_yt)
-    # Parking-slot locator (owner-approved 2026-10-11): expose ONLY a physical
-    # parking slot such as "Y5"/"L1" so a visiting customer can walk straight to the
-    # car. Custody word-codes (POLI/IMM/REP/NGP/ILL …) and any location flagged
-    # non-customer-viewable are NEVER shown — gated on location_type == "slot" AND
-    # customer_viewable. ("slot" is LocationType.SLOT in inventory_models.)
-    parking_slot = None
+    # Location at the lot (owner-approved): the car's LOC value — a parking slot
+    # ("Z2"), a lot zone ("L"/"W"/"F") or a custody tag — so a visiting customer can
+    # find the car. Shown for every car whose location is customer-viewable; the few
+    # internal codes flagged non-viewable (POLI/ILL/NGP/REP) are NEVER shown.
+    location = None
     try:
-        if (getattr(item, "location_type", None) == "slot"
-                and getattr(item, "customer_viewable", False)):
-            parking_slot = _s(getattr(item, "location_code", None))
+        if getattr(item, "customer_viewable", False):
+            location = _s(getattr(item, "location_code", None))
     except Exception:
-        parking_slot = None
+        location = None
     primary = _rows(item, _PRIMARY, keep_blank_as_na=True)
     # A price under 5 digits (status codes / < ₹10,000) is NOT a real price — never
     # quote a junk number. Show a visit-the-showroom message instead of a bare
@@ -206,7 +204,7 @@ def build_detail(item, assets) -> Dict[str, Any]:
         "make": item.make_full,
         "model": item.model,
         "variant": _s(item.variant),
-        "parking_slot": parking_slot,
+        "location": location,
         "primary": primary,
         "details": _rows(item, _DETAILS, keep_blank_as_na=False),
         "specs": _rows(item, _SPECS, keep_blank_as_na=False),

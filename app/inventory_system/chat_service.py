@@ -177,14 +177,13 @@ def public_vehicle(item) -> Dict[str, Any]:
         "price_quotable": item.price_quotable,
         "price_coming_soon": getattr(item, "price_coming_soon", False),
         "km": item.km_driven,                                # None if unknown
-        # Physical parking-slot locator (e.g. "Y1") so a visiting customer can walk
-        # straight to the car. ONLY real slot codes that are customer-viewable are
-        # exposed — custody word-codes (POLI/IMM/REP…) and non-viewable locations
-        # are never leaked (same gate as the vehicle-detail view).
-        "parking_slot": (item.location_code
-                         if getattr(item, "location_type", None) == "slot"
-                         and getattr(item, "customer_viewable", False)
-                         else None),
+        # Location at the lot so a visiting customer can find the car — the car's
+        # LOC value, whether a parking slot ("Z2"), a lot zone ("L"/"W"/"F") or a
+        # custody tag. Shown for every car whose location is customer-viewable; the
+        # few internal codes flagged non-viewable (POLI/ILL/NGP/REP) are never leaked.
+        "location": (item.location_code
+                     if getattr(item, "customer_viewable", False) and item.location_code
+                     else None),
     }
 
 
