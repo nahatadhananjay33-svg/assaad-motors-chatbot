@@ -393,3 +393,6 @@ body.vd-lock { overflow: hidden; }
   padding: 5px 12px; border-radius: 16px; font-size: 13.5px; font-weight: 500;
   background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
 .vd-slot b { font-weight: 700; }
+
+/* ── parking-slot locator chip on a car card in the list ── */
+.car-chip.car-slot { background: #ecfdf5; color: #047857; border-color: #a7f3d0; font-weight: 600; }

@@ -222,6 +222,13 @@
           var c = document.createElement("span"); c.className = "car-chip"; c.textContent = x;
           chips.appendChild(c);
         });
+      // Parking-slot locator chip (only when the car has a real slot) — so the
+      // customer sees where to find it right in the list, not only after opening.
+      if (v.parking_slot) {
+        var sc = document.createElement("span");
+        sc.className = "car-chip car-slot"; sc.textContent = "📍 " + v.parking_slot;
+        chips.appendChild(sc);
+      }
       card.appendChild(chips);
       // ── click a card -> open that EXACT vehicle's detail (by registration) ──
       if (v.registration_no) {
