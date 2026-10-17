@@ -671,6 +671,16 @@ def build_item(row: Tuple, *, source_sheet: str, as_of: str,
     price_coming_soon = (price_state == "coming_soon")
     loc_code, loc_type, viewable = classify_location(_cell(row, "location"))
 
+    # Owner rule (2026-10-17): a location longer than 2 characters (e.g. "PAINT",
+    # "SAJID", "Y1R", "ABR") marks a car that isn't on the ready lot — don't quote a
+    # price; show "Coming soon" instead (same display as the price coming-soon
+    # state). Plain slots/zones up to 2 chars ("H", "L1", "Z2") price normally.
+    if loc_code and len(loc_code) > 2:
+        price_coming_soon = True
+        quotable = False
+        price_inr = None            # keep the "not quotable => no price" invariant
+        price_lakh = None
+
     # placeholder / non-car detection (risk R03). A two-digit RATE code ("44"/"33")
     # marks a not-ready car the owner wants hidden -> treat it as a placeholder so
     # sync quarantines it (owner spec 2026-10-05).
