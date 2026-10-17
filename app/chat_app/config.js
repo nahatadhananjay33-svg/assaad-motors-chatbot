@@ -29,18 +29,53 @@ window.DEALER_CONFIG = {
   suggestions: [
     { label: "7 Seater",        q: "7 seater" },
     { label: "5 Seater",        q: "5 seater" },
+    { label: "By Brand",        expand: "brands" },
+    { label: "First Owner",     q: "first owner cars" },
     { label: "CNG Cars",        q: "cng cars" },
     { label: "Petrol Cars",     q: "petrol cars" },
     { label: "Diesel Cars",     q: "diesel cars" },
+    { label: "Electric Cars",   q: "electric cars" },
     { label: "Automatic Cars",  q: "automatic cars" },
     { label: "Manual Cars",     q: "manual cars" },
     { label: "Luxury Cars",     q: "luxury cars" },
+    { label: "Luxury by Brand", expand: "luxuryBrands" },
     { label: "Sunroof Cars",    q: "sunroof cars" },
     { label: "Under ₹2 Lakh",   q: "under 2 lakh" },
     { label: "Under ₹5 Lakh",   q: "under 5 lakh" },
     { label: "Under ₹10 Lakh",  q: "under 10 lakh" },
     { label: "Under 40,000 KM", q: "under 40000 km" },
     { label: "YouTube Videos",  q: "youtube videos" }
+  ],
+
+  // Brand sub-chips revealed when "By Brand" is tapped. Each sends "<brand> cars"
+  // to the SAME /chat backend — all verified to return results on the live
+  // inventory. Edit this list as the stock changes (labels/queries only).
+  brands: [
+    { label: "Maruti",     q: "maruti cars" },
+    { label: "Hyundai",    q: "hyundai cars" },
+    { label: "Toyota",     q: "toyota cars" },
+    { label: "Honda",      q: "honda cars" },
+    { label: "Mahindra",   q: "mahindra cars" },
+    { label: "Tata",       q: "tata cars" },
+    { label: "Mercedes",   q: "mercedes cars" },
+    { label: "BMW",        q: "bmw cars" },
+    { label: "Audi",       q: "audi cars" },
+    { label: "Škoda",      q: "skoda cars" },
+    { label: "Volkswagen", q: "volkswagen cars" },
+    { label: "MG",         q: "mg cars" },
+    { label: "Ford",       q: "ford cars" },
+    { label: "Jeep",       q: "jeep cars" },
+    { label: "Renault",    q: "renault cars" },
+    { label: "Jaguar",     q: "jaguar cars" },
+    { label: "Volvo",      q: "volvo cars" }
+  ],
+  // Luxury brand sub-chips revealed when "Luxury by Brand" is tapped.
+  luxuryBrands: [
+    { label: "Mercedes",   q: "mercedes cars" },
+    { label: "BMW",        q: "bmw cars" },
+    { label: "Audi",       q: "audi cars" },
+    { label: "Jaguar",     q: "jaguar cars" },
+    { label: "Volvo",      q: "volvo cars" }
   ],
 
   inputPlaceholder: "Ask anything about our cars...",

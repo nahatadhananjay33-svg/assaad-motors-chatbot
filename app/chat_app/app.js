@@ -64,9 +64,33 @@
     var b = document.createElement("button");
     b.type = "button"; b.className = "chip";
     b.textContent = isObj ? s.label : s;
+    // An "expand" chip (e.g. "By Brand") reveals a row of sub-chips instead of
+    // sending a query — the sub-chips come from CFG[s.expand].
+    if (isObj && s.expand) {
+      b.className = "chip chip-expand";
+      b.addEventListener("click", function () { toggleExpand(b, s.expand); });
+      return b;
+    }
     var query = isObj ? s.q : s;
     b.addEventListener("click", function () { sendMessage(query); });
     return b;
+  }
+  // Toggle the sub-chip row for an expandable chip. Draws CFG[key] (each a normal
+  // {label,q} chip) just below the opening chips; a second tap closes it.
+  function toggleExpand(btn, key) {
+    var chips = $("chips");
+    if (!chips) return;
+    var existing = $("subchips");
+    var wasForThis = existing && existing.getAttribute("data-key") === key;
+    if (existing) existing.remove();
+    var active = chips.querySelectorAll(".chip-expand.active");
+    for (var i = 0; i < active.length; i++) active[i].classList.remove("active");
+    if (wasForThis) return;                       // second tap closes it
+    btn.classList.add("active");
+    var row = document.createElement("div");
+    row.id = "subchips"; row.className = "subchips"; row.setAttribute("data-key", key);
+    (CFG[key] || []).forEach(function (sub) { row.appendChild(makeChip(sub)); });
+    chips.parentNode.insertBefore(row, chips.nextSibling);
   }
   (CFG.suggestions || []).forEach(function (s) { $("chips").appendChild(makeChip(s)); });
   function paintLogo(node) {

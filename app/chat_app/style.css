@@ -396,3 +396,15 @@ body.vd-lock { overflow: hidden; }
 
 /* ── parking-slot locator chip on a car card in the list ── */
 .car-chip.car-slot { background: #ecfdf5; color: #047857; border-color: #a7f3d0; font-weight: 600; }
+
+/* ── expandable "By Brand" / "Luxury by Brand" chips + their sub-chip row ── */
+.chip-expand { font-weight: 600; }
+.chip-expand::after { content: " ▾"; opacity: .6; font-size: 12px; }
+.chip-expand.active { border-color: var(--blue); background: var(--blue-soft); }
+.chip-expand.active::after { content: " ▴"; }
+.subchips {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  max-width: 660px; margin: 10px auto 0; padding: 12px;
+  border: 1px dashed var(--grey-line); border-radius: 12px; background: var(--blue-soft);
+}
+.subchips .chip { background: #fff; padding: 9px 13px; }
