@@ -139,6 +139,10 @@ MAKE_WORDS: Dict[str, str] = {
     "mitsubishi": "HMFC",
     "jaguar": "JAGUAR",
     "volvo": "VOLV",
+    # Range Rover / Land Rover (make code RANGE; models Evoque, Discovery). Bare
+    # "range" is deliberately NOT an alias — it would clash with "price range" /
+    # "ev range" / "km range"; the two-word brand names and "rover" are specific.
+    "range rover": "RANGE", "land rover": "RANGE", "rover": "RANGE",
     "isuzu": "ISUZU",
 }
 
