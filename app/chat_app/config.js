@@ -68,9 +68,7 @@ window.DEALER_CONFIG = {
     { label: "Renault",     q: "renault cars" },
     { label: "Jaguar",      q: "jaguar cars" },
     { label: "Volvo",       q: "volvo cars" },
-    // q uses "land rover" (same make code RANGE) — the word "range" collides with
-    // the EV-range field intent and returns 0, so avoid it in the chip query.
-    { label: "Range Rover", q: "land rover cars" }
+    { label: "Range Rover", q: "range rover cars" }
   ],
   // Luxury brand sub-chips revealed when "Luxury by Brand" is tapped.
   luxuryBrands: [
@@ -79,7 +77,7 @@ window.DEALER_CONFIG = {
     { label: "Audi",        q: "audi cars" },
     { label: "Jaguar",      q: "jaguar cars" },
     { label: "Volvo",       q: "volvo cars" },
-    { label: "Range Rover", q: "land rover cars" }
+    { label: "Range Rover", q: "range rover cars" }
   ],
 
   inputPlaceholder: "Ask anything about our cars...",

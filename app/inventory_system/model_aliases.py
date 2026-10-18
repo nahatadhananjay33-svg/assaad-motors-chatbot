@@ -237,8 +237,12 @@ EXTENDED_MODEL_ALIASES: Dict[str, str] = {
 
     # ── Jaguar / Land Rover ───────────────────────────────────────────────────
     "discovery": "Discovery",
-    "range rover": "Range Rover",
+    # "range rover" is a BRAND (make code RANGE), not a model — it lives in
+    # query_parser.MAKE_WORDS. Keeping it here too made "range rover" set BOTH a
+    # make and a phantom model, so it became a 2-filter "combination" that matched
+    # 0 cars. Real Land Rover models (Discovery, Defender, Evoque) stay below.
     "defender": "Defender",
+    "evoque": "Evoque",
     "f-pace": "F-Pace",
     "f pace": "F-Pace",
 
