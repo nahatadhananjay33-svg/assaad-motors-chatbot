@@ -418,3 +418,11 @@ body.vd-lock { overflow: hidden; }
 .vd-lhead .brand-ic { width: 21px; height: 21px; }
 .vd-lbtns { display: flex; flex-wrap: wrap; gap: 10px; }
 .vd-link { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+
+/* ── brand logos on the chat-bubble media strip pills ── */
+.media-link { gap: 6px; }
+.media-link .brand-ic { width: 16px; height: 16px; }
+.media-link.ig { background: #fdf2f8; border-color: #fbcfe8; color: #be185d; }
+.media-link.ig:hover { background: #fce7f3; }
+.media-link.yt { background: #fef2f2; border-color: #fecaca; color: #b91c1c; }
+.media-link.yt:hover { background: #fee2e2; }

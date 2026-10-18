@@ -348,6 +348,20 @@
     '<svg class="brand-ic" viewBox="0 0 24 24" aria-hidden="true">' +
       '<rect x="1.5" y="5" width="21" height="14" rx="4.5" fill="#FF0000"/>' +
       '<path d="M10 8.5 L16 12 L10 15.5 Z" fill="#fff"/></svg>';
+  // Direct (Supabase) video — no brand, a neutral play button.
+  var VIDEO_ICON =
+    '<svg class="brand-ic" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<circle cx="12" cy="12" r="10" fill="#334155"/>' +
+      '<path d="M10 8 L16 12 L10 16 Z" fill="#fff"/></svg>';
+  // Inject the Instagram-gradient <defs> into the document ONCE, so the IG camera
+  // renders everywhere (chat strip + detail overlay), not only inside the overlay.
+  function ensureBrandDefs() {
+    if (document.getElementById("amIgGrad")) return;
+    var wrap = document.createElement("div");
+    wrap.innerHTML = BRAND_DEFS;
+    var svg = wrap.firstChild;
+    if (svg) document.body.appendChild(svg);
+  }
   // One platform section: a brand header (logo + name) then numbered link buttons,
   // each carrying the same logo.
   function vdLinkGroup(platform, urls, isChannel) {
@@ -408,7 +422,7 @@
     if (igs.length) linksHtml += vdLinkGroup("ig", igs);
     else if (CFG.instagram) linksHtml += vdLinkGroup("ig", [CFG.instagram], true);
     if (yts.length) linksHtml += vdLinkGroup("yt", yts);
-    if (linksHtml) h += '<div class="vd-links">' + BRAND_DEFS + linksHtml + '</div>';
+    if (linksHtml) { ensureBrandDefs(); h += '<div class="vd-links">' + linksHtml + '</div>'; }
     panel.innerHTML = h;
     var b = ov.querySelector(".vd-back"); if (b) b.onclick = closeVehicleDetail;
     panel.scrollTop = 0;
@@ -499,16 +513,21 @@
       });
       conversation.appendChild(row);
     }
+    // Link pills carry the platform logo (Instagram / YouTube) so customers who
+    // don't read English recognise them; direct videos get a neutral play button.
     var links = [];
-    videos.forEach(function (u, i) { links.push(["▶ Video" + (videos.length > 1 ? " " + (i + 1) : ""), u]); });
-    insta.forEach(function (u, i) { links.push(["Instagram" + (insta.length > 1 ? " " + (i + 1) : ""), u]); });
-    yt.forEach(function (u, i) { links.push(["YouTube" + (yt.length > 1 ? " " + (i + 1) : ""), u]); });
+    videos.forEach(function (u, i) { links.push({ t: "Video" + (videos.length > 1 ? " " + (i + 1) : ""), u: u, k: "video" }); });
+    insta.forEach(function (u, i) { links.push({ t: "Instagram" + (insta.length > 1 ? " " + (i + 1) : ""), u: u, k: "ig" }); });
+    yt.forEach(function (u, i) { links.push({ t: "YouTube" + (yt.length > 1 ? " " + (i + 1) : ""), u: u, k: "yt" }); });
     if (links.length) {
+      ensureBrandDefs();
       var lr = document.createElement("div"); lr.className = "media-row";
-      links.forEach(function (pair) {
+      links.forEach(function (lnk) {
         var a = document.createElement("a");
-        a.className = "media-link"; a.textContent = pair[0];
-        a.href = pair[1]; a.target = "_blank"; a.rel = "noopener noreferrer";
+        a.className = "media-link " + lnk.k;
+        a.href = lnk.u; a.target = "_blank"; a.rel = "noopener noreferrer";
+        var icon = lnk.k === "ig" ? IG_ICON : (lnk.k === "yt" ? YT_ICON : VIDEO_ICON);
+        a.innerHTML = icon + '<span>' + escapeHtml(lnk.t) + '</span>';
         lr.appendChild(a);
       });
       conversation.appendChild(lr);
