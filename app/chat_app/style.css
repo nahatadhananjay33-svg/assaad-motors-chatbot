@@ -408,3 +408,13 @@ body.vd-lock { overflow: hidden; }
   border: 1px dashed var(--grey-line); border-radius: 12px; background: var(--blue-soft);
 }
 .subchips .chip { background: #fff; padding: 9px 13px; }
+
+/* ── grouped Instagram / YouTube links with brand logos (vehicle detail) ── */
+.vd-links { display: block; }
+.brand-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+.brand-ic { width: 18px; height: 18px; flex: none; display: inline-block; vertical-align: middle; }
+.vd-lgroup { margin-top: 16px; }
+.vd-lhead { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14.5px; margin: 0 0 8px; }
+.vd-lhead .brand-ic { width: 21px; height: 21px; }
+.vd-lbtns { display: flex; flex-wrap: wrap; gap: 10px; }
+.vd-link { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }

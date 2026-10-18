@@ -329,6 +329,41 @@
         var b = ov.querySelector(".vd-back"); if (b) b.onclick = closeVehicleDetail;
       });
   }
+  // Brand logos (inline SVG) so customers who don't read English recognise the
+  // platform by its logo. The Instagram gradient is defined once per render
+  // (BRAND_DEFS) and referenced by every Instagram glyph.
+  var BRAND_DEFS =
+    '<svg class="brand-defs" aria-hidden="true" width="0" height="0">' +
+      '<defs><linearGradient id="amIgGrad" x1="0" y1="1" x2="1" y2="0">' +
+        '<stop offset="0" stop-color="#feda75"/><stop offset=".35" stop-color="#fa7e1e"/>' +
+        '<stop offset=".6" stop-color="#d62976"/><stop offset="1" stop-color="#4f5bd5"/>' +
+      '</linearGradient></defs></svg>';
+  var IG_ICON =
+    '<svg class="brand-ic" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<rect x="2" y="2" width="20" height="20" rx="6" fill="url(#amIgGrad)"/>' +
+      '<rect x="6" y="6" width="12" height="12" rx="4.5" fill="none" stroke="#fff" stroke-width="1.7"/>' +
+      '<circle cx="12" cy="12" r="3.2" fill="none" stroke="#fff" stroke-width="1.7"/>' +
+      '<circle cx="16.6" cy="7.4" r="1.2" fill="#fff"/></svg>';
+  var YT_ICON =
+    '<svg class="brand-ic" viewBox="0 0 24 24" aria-hidden="true">' +
+      '<rect x="1.5" y="5" width="21" height="14" rx="4.5" fill="#FF0000"/>' +
+      '<path d="M10 8.5 L16 12 L10 15.5 Z" fill="#fff"/></svg>';
+  // One platform section: a brand header (logo + name) then numbered link buttons,
+  // each carrying the same logo.
+  function vdLinkGroup(platform, urls, isChannel) {
+    if (!urls || !urls.length) return "";
+    var icon = platform === "yt" ? YT_ICON : IG_ICON;
+    var name = platform === "yt" ? "YouTube" : "Instagram";
+    var out = '<div class="vd-lgroup ' + platform + '">' +
+              '<div class="vd-lhead">' + icon + '<span>' + name + '</span></div>' +
+              '<div class="vd-lbtns">';
+    urls.forEach(function (u, i) {
+      var label = isChannel ? "Channel" : ("Link " + (i + 1));
+      out += '<a class="vd-link ' + platform + '" target="_blank" rel="noopener" href="' +
+             vdEsc(u) + '">' + icon + '<span>' + label + '</span></a>';
+    });
+    return out + '</div></div>';
+  }
   function renderVehicleDetail(ov, res) {
     var d = res.d || {}, panel = ov.querySelector(".vd-panel");
     var back = '<button class="vd-back" type="button">← Back</button>';
@@ -370,17 +405,10 @@
     };
     var igs = asList(lk.instagram), yts = asList(lk.youtube);
     var linksHtml = "";
-    if (igs.length) {
-      igs.forEach(function (u, i) {
-        linksHtml += '<a class="vd-link ig" target="_blank" rel="noopener" href="' + vdEsc(u) + '">Instagram' + (igs.length > 1 ? " " + (i + 1) : "") + '</a>';
-      });
-    } else if (CFG.instagram) {
-      linksHtml += '<a class="vd-link ig" target="_blank" rel="noopener" href="' + vdEsc(CFG.instagram) + '">Instagram (Channel)</a>';
-    }
-    yts.forEach(function (u, i) {
-      linksHtml += '<a class="vd-link yt" target="_blank" rel="noopener" href="' + vdEsc(u) + '">YouTube' + (yts.length > 1 ? " " + (i + 1) : "") + '</a>';
-    });
-    if (linksHtml) h += '<div class="vd-links">' + linksHtml + '</div>';
+    if (igs.length) linksHtml += vdLinkGroup("ig", igs);
+    else if (CFG.instagram) linksHtml += vdLinkGroup("ig", [CFG.instagram], true);
+    if (yts.length) linksHtml += vdLinkGroup("yt", yts);
+    if (linksHtml) h += '<div class="vd-links">' + BRAND_DEFS + linksHtml + '</div>';
     panel.innerHTML = h;
     var b = ov.querySelector(".vd-back"); if (b) b.onclick = closeVehicleDetail;
     panel.scrollTop = 0;
