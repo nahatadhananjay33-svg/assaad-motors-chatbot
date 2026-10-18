@@ -178,11 +178,14 @@ def public_vehicle(item) -> Dict[str, Any]:
         "price_coming_soon": getattr(item, "price_coming_soon", False),
         "km": item.km_driven,                                # None if unknown
         # Location at the lot so a visiting customer can find the car — the car's
-        # LOC value, whether a parking slot ("Z2"), a lot zone ("L"/"W"/"F") or a
-        # custody tag. Shown for every car whose location is customer-viewable; the
-        # few internal codes flagged non-viewable (POLI/ILL/NGP/REP) are never leaked.
+        # LOC value (a parking slot "Z2" or lot zone "L"/"W"/"F"). Shown ONLY when it
+        # is a short 1-2 char code AND customer-viewable. A location longer than 2
+        # chars (e.g. "AB1", "ZB1-2", "SAJID") marks a car not on the ready lot — it
+        # is also forced to "Coming soon" in the loader, so its location is hidden;
+        # non-viewable codes (POLI/ILL/NGP/REP) never leak either.
         "location": (item.location_code
-                     if getattr(item, "customer_viewable", False) and item.location_code
+                     if getattr(item, "customer_viewable", False)
+                     and item.location_code and len(item.location_code) <= 2
                      else None),
     }
 

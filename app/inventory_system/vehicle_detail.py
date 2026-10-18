@@ -177,13 +177,15 @@ def build_detail(item, assets) -> Dict[str, Any]:
     # Label links by their real platform (YouTube URL in an IG column -> YouTube).
     veh_ig, veh_yt = _classify_social(veh_ig, veh_yt)
     # Location at the lot (owner-approved): the car's LOC value — a parking slot
-    # ("Z2"), a lot zone ("L"/"W"/"F") or a custody tag — so a visiting customer can
-    # find the car. Shown for every car whose location is customer-viewable; the few
-    # internal codes flagged non-viewable (POLI/ILL/NGP/REP) are NEVER shown.
+    # ("Z2") or lot zone ("L"/"W"/"F"). Shown ONLY for a short 1-2 char code that is
+    # customer-viewable. A location longer than 2 chars (e.g. "AB1", "ZB1-2",
+    # "SAJID") marks a car not on the ready lot (also forced to "Coming soon" in the
+    # loader), so its location is hidden; non-viewable codes (POLI/ILL/NGP/REP) too.
     location = None
     try:
-        if getattr(item, "customer_viewable", False):
-            location = _s(getattr(item, "location_code", None))
+        lc = getattr(item, "location_code", None)
+        if getattr(item, "customer_viewable", False) and lc and len(lc) <= 2:
+            location = _s(lc)
     except Exception:
         location = None
     primary = _rows(item, _PRIMARY, keep_blank_as_na=True)
