@@ -828,31 +828,35 @@ def load_sold_registrations(path: str, sheet: str = SOLD_SHEET) -> Set[str]:
     return sold
 
 
+# Explicit sold marks the owner types in the DNJ RATE cell. On the floor the owner
+# writes "SOLD" (and the seen typo "SALD"); "DDD"/"DDDD" are the archive's codes.
+_SOLD_RATE_CODES = {"SOLD", "SALD", "DDD", "DDDD"}
+
+
+def _is_sold_rate(rate_raw: Any) -> bool:
+    return str(rate_raw or "").strip().upper() in _SOLD_RATE_CODES
+
+
 def reconcile_sold(items: List[InventoryItem], sold_regs: Set[str]) -> int:
     """
     Mark items as SOLD. Returns count newly marked sold.
 
-    DNJ is the source of truth for availability (owner spec 2026-10-19): a car
-    actively re-listed in DNJ with a real, quotable price OVERRIDES a stale
-    "DONT TOUCH SOLD" entry — the owner re-stocked it, so it must show. A car is
-    still SOLD when:
-      * its OWN DNJ rate is a DDD/DDDD sold code (the owner's in-DNJ sold mark), OR
-      * it is in the sold sheet AND is not actively re-listed (no real price /
-        placeholder).
-    So to take a car off the floor: put DDD in its DNJ rate, or remove it from DNJ
-    — merely leaving it in the sold sheet no longer hides a real-priced DNJ listing.
+    A car is SOLD ONLY when the owner explicitly marks it (owner spec 2026-10-19 —
+    "no car should go sold on its own"):
+      * its DNJ RATE is an explicit sold mark — "SOLD" (what the owner types on the
+        floor) or a "DDD"/"DDDD" code, OR
+      * the owner used the panel's "Mark Sold" button — which DELETES the row from
+        DNJ entirely, so such a car never reaches this function at all.
+
+    The "DONT TOUCH SOLD" *sheet* is a historical archive and NO LONGER hides a car
+    that is present in the active DNJ sheet: nothing is auto-marked sold. To take a
+    car off the floor: write SOLD in its DNJ rate, use "Mark Sold", or delete its
+    DNJ row. (`sold_regs` is kept for signature/back-compat but intentionally unused.)
     """
     count = 0
     for it in items:
         rate_raw = (it.raw or {}).get("rate", "") or ""
-        is_ddd = str(rate_raw).upper() in {"DDD", "DDDD"}
-        in_sold_sheet = it.registration_no in sold_regs
-        # "Actively re-listed" = a REAL price in DNJ. Use the raw rate
-        # (classify_price == "show"), NOT price_quotable — the location/coming-soon
-        # display rule can zero out price_quotable for a car that is still a genuine,
-        # priced listing (e.g. a re-stocked car parked at a word-location like WEST).
-        active_relisted = classify_price(rate_raw) == "show" and not it.is_placeholder
-        if is_ddd or (in_sold_sheet and not active_relisted):
+        if _is_sold_rate(rate_raw):
             if it.listing_status != ListingStatus.SOLD:
                 it.listing_status = ListingStatus.SOLD
                 it.customer_viewable = False

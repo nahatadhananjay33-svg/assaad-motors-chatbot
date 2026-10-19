@@ -284,20 +284,27 @@ class TestSoldReconciliation(unittest.TestCase):
         self.assertEqual(it.listing_status, ListingStatus.AVAILABLE)
         self.assertTrue(it.is_customer_facing)
 
-    def test_sold_set_hides_car_without_a_real_price(self):
-        # In the sold sheet AND not a real active listing (no quotable price) -> sold.
+    def test_sold_sheet_does_not_auto_hide_a_dnj_car(self):
+        # Owner spec 2026-10-19: being in the DONT TOUCH SOLD sheet no longer marks a
+        # car present in DNJ as sold — only a DDD rate (or the Mark Sold button, which
+        # deletes the DNJ row) does. A re-stocked "coming soon" car still shows.
         it = build(make="TOYO", model="INNOVA", rate="4", car_numb="MH12KE0019")
-        self.assertFalse(it.price_quotable)
         n = L.reconcile_sold([it], {"MH12KE0019"})
-        self.assertEqual(n, 1)
-        self.assertEqual(it.listing_status, ListingStatus.SOLD)
-        self.assertFalse(it.customer_viewable)
-        self.assertFalse(it.is_customer_facing)
+        self.assertEqual(n, 0)
+        self.assertEqual(it.listing_status, ListingStatus.AVAILABLE)
 
     def test_sold_via_ddd_rate(self):
         it = build(make="TOYO", model="INNOVA", rate="DDD", car_numb="MH12KE0019")
         L.reconcile_sold([it], set())
         self.assertEqual(it.listing_status, ListingStatus.SOLD)
+
+    def test_sold_via_sold_word_in_rate(self):
+        # The owner's on-the-floor sold mark is the word "SOLD" in the DNJ rate.
+        it = build(make="HOND", model="CITY", rate="SOLD", car_numb="MH04ET7209")
+        n = L.reconcile_sold([it], set())
+        self.assertEqual(n, 1)
+        self.assertEqual(it.listing_status, ListingStatus.SOLD)
+        self.assertFalse(it.is_customer_facing)
 
     def test_available_when_not_sold(self):
         it = build(make="HYUN", model="CRETA", rate=540000, car_numb="MH05CV5732")
