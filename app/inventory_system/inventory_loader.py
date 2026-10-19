@@ -830,14 +830,29 @@ def load_sold_registrations(path: str, sheet: str = SOLD_SHEET) -> Set[str]:
 
 def reconcile_sold(items: List[InventoryItem], sold_regs: Set[str]) -> int:
     """
-    Mark items as SOLD when their registration is in the sold set OR their own
-    RATE was a DDD code. SOLD always wins. Returns count newly marked sold.
+    Mark items as SOLD. Returns count newly marked sold.
+
+    DNJ is the source of truth for availability (owner spec 2026-10-19): a car
+    actively re-listed in DNJ with a real, quotable price OVERRIDES a stale
+    "DONT TOUCH SOLD" entry — the owner re-stocked it, so it must show. A car is
+    still SOLD when:
+      * its OWN DNJ rate is a DDD/DDDD sold code (the owner's in-DNJ sold mark), OR
+      * it is in the sold sheet AND is not actively re-listed (no real price /
+        placeholder).
+    So to take a car off the floor: put DDD in its DNJ rate, or remove it from DNJ
+    — merely leaving it in the sold sheet no longer hides a real-priced DNJ listing.
     """
     count = 0
     for it in items:
         rate_raw = (it.raw or {}).get("rate", "") or ""
         is_ddd = str(rate_raw).upper() in {"DDD", "DDDD"}
-        if it.registration_no in sold_regs or is_ddd:
+        in_sold_sheet = it.registration_no in sold_regs
+        # "Actively re-listed" = a REAL price in DNJ. Use the raw rate
+        # (classify_price == "show"), NOT price_quotable — the location/coming-soon
+        # display rule can zero out price_quotable for a car that is still a genuine,
+        # priced listing (e.g. a re-stocked car parked at a word-location like WEST).
+        active_relisted = classify_price(rate_raw) == "show" and not it.is_placeholder
+        if is_ddd or (in_sold_sheet and not active_relisted):
             if it.listing_status != ListingStatus.SOLD:
                 it.listing_status = ListingStatus.SOLD
                 it.customer_viewable = False

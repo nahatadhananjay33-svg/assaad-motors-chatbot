@@ -273,9 +273,21 @@ class TestDuplicateVehicles(unittest.TestCase):
 
 
 class TestSoldReconciliation(unittest.TestCase):
-    def test_sold_via_registration_in_sold_set(self):
+    def test_relisted_in_dnj_overrides_stale_sold_sheet(self):
+        # Owner spec 2026-10-19: a car actively re-listed in DNJ with a REAL price is
+        # NOT hidden just because its reg still sits in the DONT TOUCH SOLD sheet.
         it = build(make="TOYO", model="INNOVA", rate=370000, car_numb="MH12KE0019")
+        self.assertTrue(it.price_quotable)
         self.assertEqual(it.listing_status, ListingStatus.AVAILABLE)
+        n = L.reconcile_sold([it], {"MH12KE0019"})
+        self.assertEqual(n, 0)
+        self.assertEqual(it.listing_status, ListingStatus.AVAILABLE)
+        self.assertTrue(it.is_customer_facing)
+
+    def test_sold_set_hides_car_without_a_real_price(self):
+        # In the sold sheet AND not a real active listing (no quotable price) -> sold.
+        it = build(make="TOYO", model="INNOVA", rate="4", car_numb="MH12KE0019")
+        self.assertFalse(it.price_quotable)
         n = L.reconcile_sold([it], {"MH12KE0019"})
         self.assertEqual(n, 1)
         self.assertEqual(it.listing_status, ListingStatus.SOLD)
