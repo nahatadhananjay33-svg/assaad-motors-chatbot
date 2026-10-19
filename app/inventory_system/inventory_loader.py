@@ -814,8 +814,9 @@ def _read_rows(path: str, sheet: str) -> List[Tuple]:
 
 def load_sold_registrations(path: str, sheet: str = SOLD_SHEET) -> Set[str]:
     """
-    Build the sold set from the DONT TOUCH SOLD sheet (risk R02).
-    A registration is sold if it appears here OR carries RATE in {DDD, DDDD}.
+    Build the archive set from the DONT TOUCH SOLD sheet. NOTE (2026-10-19): this
+    set no longer decides availability — reconcile_sold hides a car only when the
+    owner writes SOLD in its DNJ rate. Kept for history / diagnostics.
     Rows with no registration are skipped (cannot be matched safely).
     """
     sold: Set[str] = set()
@@ -828,9 +829,10 @@ def load_sold_registrations(path: str, sheet: str = SOLD_SHEET) -> Set[str]:
     return sold
 
 
-# Explicit sold marks the owner types in the DNJ RATE cell. On the floor the owner
-# writes "SOLD" (and the seen typo "SALD"); "DDD"/"DDDD" are the archive's codes.
-_SOLD_RATE_CODES = {"SOLD", "SALD", "DDD", "DDDD"}
+# Explicit sold mark: the owner writes the word "SOLD" in the DNJ RATE cell. "SALD"
+# is a seen typo of the same word. Nothing else marks a car sold (owner spec
+# 2026-10-19 — DDD/DDDD were dropped as a sold trigger at the owner's request).
+_SOLD_RATE_CODES = {"SOLD", "SALD"}
 
 
 def _is_sold_rate(rate_raw: Any) -> bool:
@@ -842,16 +844,16 @@ def reconcile_sold(items: List[InventoryItem], sold_regs: Set[str]) -> int:
     Mark items as SOLD. Returns count newly marked sold.
 
     A car is SOLD ONLY when the owner explicitly marks it (owner spec 2026-10-19 —
-    "no car should go sold on its own"):
-      * its DNJ RATE is an explicit sold mark — "SOLD" (what the owner types on the
-        floor) or a "DDD"/"DDDD" code, OR
+    "no car should go sold on its own; only the word SOLD means sold"):
+      * the word "SOLD" is in its DNJ RATE cell, OR
       * the owner used the panel's "Mark Sold" button — which DELETES the row from
         DNJ entirely, so such a car never reaches this function at all.
 
-    The "DONT TOUCH SOLD" *sheet* is a historical archive and NO LONGER hides a car
-    that is present in the active DNJ sheet: nothing is auto-marked sold. To take a
-    car off the floor: write SOLD in its DNJ rate, use "Mark Sold", or delete its
-    DNJ row. (`sold_regs` is kept for signature/back-compat but intentionally unused.)
+    The "DONT TOUCH SOLD" *sheet* is a historical archive that does NOT hide a car
+    present in the active DNJ sheet, and DDD/DDDD rate codes are NOT sold markers:
+    nothing is auto-marked sold. To take a car off the floor: write SOLD in its DNJ
+    rate, use "Mark Sold", or delete its DNJ row. (`sold_regs` is kept for
+    signature/back-compat but intentionally unused.)
     """
     count = 0
     for it in items:

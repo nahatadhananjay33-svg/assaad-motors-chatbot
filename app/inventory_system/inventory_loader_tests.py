@@ -293,10 +293,12 @@ class TestSoldReconciliation(unittest.TestCase):
         self.assertEqual(n, 0)
         self.assertEqual(it.listing_status, ListingStatus.AVAILABLE)
 
-    def test_sold_via_ddd_rate(self):
+    def test_ddd_rate_no_longer_marks_sold(self):
+        # Owner spec 2026-10-19: only the word "SOLD" marks a car sold; DDD/DDDD do not.
         it = build(make="TOYO", model="INNOVA", rate="DDD", car_numb="MH12KE0019")
-        L.reconcile_sold([it], set())
-        self.assertEqual(it.listing_status, ListingStatus.SOLD)
+        n = L.reconcile_sold([it], set())
+        self.assertEqual(n, 0)
+        self.assertEqual(it.listing_status, ListingStatus.AVAILABLE)
 
     def test_sold_via_sold_word_in_rate(self):
         # The owner's on-the-floor sold mark is the word "SOLD" in the DNJ rate.
