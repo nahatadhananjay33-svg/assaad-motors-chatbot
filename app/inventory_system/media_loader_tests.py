@@ -286,5 +286,82 @@ class TestProductionUploadWriterIsReal(unittest.TestCase):
         self.assertTrue(rep.results[0].url.startswith("https://"))
 
 
+class TestRobustReelPickup(unittest.TestCase):
+    """Permanence: reels must be picked up and canonicalised no matter how the owner
+    pastes the links or lays out the media columns (added 2026-10-29)."""
+
+    def test_canonical_instagram_formats(self):
+        cases = {
+            "https://www.instagram.com/assad_motors/reel/ABC-1/?hl=en":
+                "https://www.instagram.com/reel/ABC-1/",
+            "https://instagram.com/reel/XY_9/?igsh=q":
+                "https://www.instagram.com/reel/XY_9/",
+            "https://www.instagram.com/reels/QQ/":
+                "https://www.instagram.com/reel/QQ/",
+            "https://m.instagram.com/p/PP1/":
+                "https://www.instagram.com/p/PP1/",
+            "  https://www.instagram.com/x/reel/Db-wK20No_L/?hl=en  ":
+                "https://www.instagram.com/reel/Db-wK20No_L/",
+            # left untouched: profile-only + opaque /share/ tokens
+            "https://www.instagram.com/assad_motors/":
+                "https://www.instagram.com/assad_motors/",
+            "https://www.instagram.com/share/reel/TOK/":
+                "https://www.instagram.com/share/reel/TOK/",
+        }
+        for inp, exp in cases.items():
+            self.assertEqual(M._canonical_instagram(inp), exp, inp)
+
+    def test_split_row_headers_are_read_and_canonicalised(self):
+        # media KEYWORDS in the row ABOVE the header row (new owner template)
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "split.xlsx")
+            wb = openpyxl.Workbook()
+            sold = wb.active; sold.title = "DONT TOUCH SOLD"; sold.append(["x"])
+            ws = wb.create_sheet("DNJ")
+            r1 = [None] * 25; r1[19] = "INSTAGRAM 1"; r1[22] = "youtube"
+            ws.append(r1)
+            r2 = [None] * 25
+            r2[3], r2[12], r2[13] = "MODEL", "RATE", "CAR NUMB"
+            r2[20], r2[21], r2[22], r2[23], r2[24] = "2", "3", "1", "2", "3"
+            ws.append(r2)
+            ws.append([None] * 25)
+            d = [None] * 25
+            d[3], d[12], d[13] = "CRETA", 750000, "MH12AB1234"
+            d[19] = "https://www.instagram.com/assad_motors/reel/ABC-1/?hl=en"
+            d[20] = "https://instagram.com/xyz/reel/DEF2/"
+            d[22] = "https://youtu.be/VID1?si=a"
+            ws.append(d)
+            wb.save(p)
+            media = M.read_media_index(p)["MH12AB1234"]
+            igs = sorted(m.url for m in media if m.media_type == MediaType.INSTAGRAM)
+            yts = [m.url for m in media if m.media_type == MediaType.YOUTUBE]
+            self.assertEqual(igs, ["https://www.instagram.com/reel/ABC-1/",
+                                   "https://www.instagram.com/reel/DEF2/"])
+            self.assertEqual(yts, ["https://youtu.be/VID1?si=a"])
+
+    def test_content_detection_when_media_headers_missing(self):
+        # No media headers at all — reels/videos still found by cell CONTENT.
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, "noheader.xlsx")
+            wb = openpyxl.Workbook()
+            sold = wb.active; sold.title = "DONT TOUCH SOLD"; sold.append(["x"])
+            ws = wb.create_sheet("DNJ")
+            ws.append([None] * 22)
+            r2 = [None] * 22; r2[3], r2[12], r2[13] = "MODEL", "RATE", "CAR NUMB"
+            ws.append(r2)
+            ws.append([None] * 22)
+            d = [None] * 22
+            d[3], d[12], d[13] = "SWIFT", 550000, "MH14CD5678"
+            d[19] = "https://www.instagram.com/foo/reel/GHI3/?hl=en"
+            d[20] = "https://youtu.be/VID2"
+            ws.append(d)
+            wb.save(p)
+            media = M.read_media_index(p)["MH14CD5678"]
+            igs = [m.url for m in media if m.media_type == MediaType.INSTAGRAM]
+            yts = [m.url for m in media if m.media_type == MediaType.YOUTUBE]
+            self.assertEqual(igs, ["https://www.instagram.com/reel/GHI3/"])
+            self.assertEqual(yts, ["https://youtu.be/VID2"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

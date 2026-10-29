@@ -71,22 +71,30 @@ _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 
 _NUMERIC_RE = re.compile(r"^\d+$")
 
-# An Instagram post/reel, possibly scoped under a username and carrying query params
-# (e.g. ".../assad_motors/reel/ABC123/?hl=en"). We rewrite these to the canonical
-# ".../reel/ABC123/" form, which deep-links to the EXACT reel on mobile instead of
-# opening the Instagram app's home/profile. Profile-only links are left unchanged.
+# An Instagram post/reel in ANY paste format the owner might use: canonical
+# (".../reel/ABC/"), username-scoped (".../assad_motors/reel/ABC/"), with query
+# (".../reel/ABC/?hl=en", "?igsh=..."), plural "reels", "p"/"tv", and on www./m.
+# hosts. We rewrite them all to the canonical "https://www.instagram.com/reel/ABC/"
+# so they deep-link to the EXACT reel on mobile. Shortcode charset is base64url
+# (letters/digits/_/-). "share" links (/share/...) carry an opaque token, not the
+# real shortcode, so we leave those (and profile-only links) untouched to let
+# Instagram resolve the redirect.
 _IG_POST_RE = re.compile(
-    r"instagram\.com/(?:[^/?#]+/)?(reel|reels|p|tv)/([^/?#]+)", re.IGNORECASE)
+    r"instagram\.com/(?:([A-Za-z0-9._]+)/)?(reel|reels|p|tv)/([A-Za-z0-9_-]+)",
+    re.IGNORECASE)
 
 
 def _canonical_instagram(url: str) -> str:
-    m = _IG_POST_RE.search(url or "")
+    s = (url or "").strip()
+    m = _IG_POST_RE.search(s)
     if not m:
-        return url
-    kind = m.group(1).lower()
+        return s
+    user, kind, code = m.group(1), m.group(2).lower(), m.group(3)
+    if user and user.lower() == "share":
+        return s
     if kind == "reels":
         kind = "reel"
-    return f"https://www.instagram.com/{kind}/{m.group(2)}/"
+    return f"https://www.instagram.com/{kind}/{code}/"
 
 
 def _media_keyword(upper: str) -> Optional[str]:
@@ -181,15 +189,24 @@ def build_media_for_row(registration_no: str, row: Tuple[Any, ...],
             url = _norm(value)
             if not url or not _URL_RE.match(url):
                 continue
-            if media_type == MediaType.INSTAGRAM:
+            # Type each social link by its OWN domain, not by the column — so a
+            # YouTube link pasted into an Instagram slot (or vice-versa) is still
+            # labelled correctly. Photos/videos (Supabase URLs) keep the column type.
+            mt = media_type
+            low = url.lower()
+            if "youtu.be" in low or "youtube.com" in low:
+                mt = MediaType.YOUTUBE
+            elif "instagram.com" in low:
+                mt = MediaType.INSTAGRAM
+            if mt == MediaType.INSTAGRAM:
                 url = _canonical_instagram(url)       # deep-link to the exact reel
             out.append(InventoryMedia(
                 registration_no=registration_no,
-                media_type=media_type,
+                media_type=mt,
                 slot=slot_number,
                 url=url,
                 # the first exterior photo is the natural hero image
-                is_primary=(media_type == MediaType.EXTERIOR_PHOTO and slot_number == 1),
+                is_primary=(mt == MediaType.EXTERIOR_PHOTO and slot_number == 1),
                 sort_order=slot_number,
             ))
     return out
@@ -198,53 +215,112 @@ def build_media_for_row(registration_no: str, row: Tuple[Any, ...],
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. Read the whole media index from the workbook  {reg -> [InventoryMedia]}
 # ─────────────────────────────────────────────────────────────────────────────
+def _merged_media_header(rows: List[Tuple[Any, ...]]) -> List[Any]:
+    """Build a single header by MERGING the data-header row with the row ABOVE it.
+    Some owner templates put the media KEYWORD ("INSTAGRAM 1", "youtube") in the row
+    above, leaving only slot numbers ("2","3") in the header row. For each column,
+    prefer the row-above cell when it is a recognised media keyword, else use the
+    header-row cell. Reads old single-row and new split-row layouts alike."""
+    hdr = list(rows[HEADER_ROW - 1]) if len(rows) >= HEADER_ROW else []
+    above = list(rows[HEADER_ROW - 2]) if HEADER_ROW >= 2 and len(rows) >= HEADER_ROW - 1 else []
+    out: List[Any] = []
+    for i in range(max(len(hdr), len(above))):
+        hv = hdr[i] if i < len(hdr) else None
+        av = above[i] if i < len(above) else None
+        out.append(av if (av is not None and _media_keyword(_norm(av).upper())) else hv)
+    return out
+
+
+def _fallback_car_idx(rows: List[Tuple[Any, ...]]) -> int:
+    """0-based CAR NUMB column: scan the first header rows for a known alias, else
+    fall back to the fixed template index (inventory_loader.COL['car_numb'] = 13)."""
+    for r in rows[:4]:
+        for i, v in enumerate(r):
+            if _norm(v).upper() in _CAR_NUMB_HEADERS:
+                return i
+    return 13
+
+
+def _detect_link_columns_by_content(rows: List[Tuple[Any, ...]], car_idx: int
+                                    ) -> Dict[str, List[Tuple[int, int]]]:
+    """CONTENT-based safety net: any DATA column whose cells are instagram / youtube
+    URLs is treated as an Instagram / YouTube slot column, regardless of its header.
+    Columns are ordered left-to-right for slot numbering. This makes reel pickup
+    independent of how (or whether) the owner labels the columns."""
+    data = rows[DATA_START_ROW - 1:]
+    width = max((len(r) for r in data), default=0)
+    ig_cols: List[int] = []
+    yt_cols: List[int] = []
+    for c in range(width):
+        if c == car_idx:
+            continue
+        ig = yt = 0
+        for r in data:
+            if c < len(r):
+                v = _norm(r[c])
+                if _URL_RE.match(v):
+                    low = v.lower()
+                    if "instagram.com" in low:
+                        ig += 1
+                    elif "youtu.be" in low or "youtube.com" in low:
+                        yt += 1
+        if ig and ig >= yt:
+            ig_cols.append(c)
+        elif yt and yt > ig:
+            yt_cols.append(c)
+    groups: Dict[str, List[Tuple[int, int]]] = {}
+    if ig_cols:
+        groups[MediaType.INSTAGRAM] = [(i + 1, c + 1) for i, c in enumerate(ig_cols)]
+    if yt_cols:
+        groups[MediaType.YOUTUBE] = [(i + 1, c + 1) for i, c in enumerate(yt_cols)]
+    return groups
+
+
+def _union_groups(a: Dict[str, List[Tuple[int, int]]],
+                  b: Dict[str, List[Tuple[int, int]]]) -> Dict[str, List[Tuple[int, int]]]:
+    """Union the column sets per media type, dedup, and re-slot by column order."""
+    out: Dict[str, List[Tuple[int, int]]] = {}
+    for t in set(a) | set(b):
+        cols = sorted({col for _s, col in a.get(t, [])} | {col for _s, col in b.get(t, [])})
+        out[t] = [(i + 1, col) for i, col in enumerate(cols)]
+    return out
+
+
 def read_media_index(path: str, sheet: str = DNJ_SHEET) -> Dict[str, List[InventoryMedia]]:
     """
-    Read media URL columns for every registration in `sheet`. Returns a map
-    keyed by normalized registration_no. Sheets with no media columns yield {}.
+    Read media URLs for every registration in `sheet`, robust to owner-template
+    variation. Instagram/YouTube link columns are found by BOTH the header layout
+    AND by scanning cell CONTENT, so reels are picked up no matter how the headers
+    are written or which row holds them. Instagram URLs are normalized to the
+    canonical /reel/<id>/ form. Returns a map keyed by normalized registration_no.
     """
     wb = openpyxl.load_workbook(path, read_only=True, data_only=True)
     try:
         if sheet not in wb.sheetnames:
             raise ValueError(f"Sheet '{sheet}' not found in {path}. Sheets: {wb.sheetnames}")
         ws = wb[sheet]
-
-        # Read the header via iter_rows rather than ws.max_column: in read_only mode
-        # openpyxl returns None for max_column when the writer omits the cached
-        # <dimension> (ONLYOFFICE's save does). iter_rows yields the real cells.
-        #
-        # MERGE the two header rows: some owner templates put the media KEYWORD
-        # ("INSTAGRAM 1", "youtube") in the row ABOVE the data-header row, leaving
-        # only the slot numbers ("2","3",...) in HEADER_ROW. For each column, prefer
-        # the row-above cell when it is a recognised media keyword; otherwise use the
-        # HEADER_ROW cell. This reads both the old single-row and the new split-row
-        # layouts without breaking CAR NUMB / other column detection.
-        row_hdr = list(next(ws.iter_rows(min_row=HEADER_ROW, max_row=HEADER_ROW,
-                                         values_only=True), ()))
-        row_above = []
-        if HEADER_ROW > 1:
-            row_above = list(next(ws.iter_rows(min_row=HEADER_ROW - 1,
-                                               max_row=HEADER_ROW - 1,
-                                               values_only=True), ()))
-        header = []
-        for i in range(max(len(row_hdr), len(row_above))):
-            hv = row_hdr[i] if i < len(row_hdr) else None
-            av = row_above[i] if i < len(row_above) else None
-            if av is not None and _media_keyword(_norm(av).upper()):
-                header.append(av)
-            else:
-                header.append(hv)
-        layout = detect_media_layout(header)
-        if not layout.has_media_columns() or layout.car_col is None:
+        rows = list(ws.iter_rows(min_row=1, values_only=True))
+        if not rows:
             return {}
 
-        car_idx = layout.car_col - 1
+        # 1) header-based layout (merged header rows) — covers EXTERIOR/INTERIOR/
+        #    VIDEO photos and any properly-labelled IG/YT columns
+        layout = detect_media_layout(_merged_media_header(rows))
+        # 2) CAR NUMB column (from the header match, else the fixed template index)
+        car_idx = (layout.car_col - 1) if layout.car_col else _fallback_car_idx(rows)
+        # 3) content-based IG/YT safety net, then 4) union the two
+        groups = _union_groups(layout.groups,
+                               _detect_link_columns_by_content(rows, car_idx))
+        if not groups:
+            return {}
+        merged = MediaLayout(car_col=car_idx + 1, groups=groups)
+
         index: Dict[str, List[InventoryMedia]] = {}
-        for row in ws.iter_rows(min_row=DATA_START_ROW, values_only=True):
+        for row in rows[DATA_START_ROW - 1:]:
             reg = _norm_reg(row[car_idx] if car_idx < len(row) else None)
             if not reg:
                 continue
-            media = build_media_for_row(reg, row, layout)
+            media = build_media_for_row(reg, row, merged)
             if media:
                 index.setdefault(reg, []).extend(media)
         return index
