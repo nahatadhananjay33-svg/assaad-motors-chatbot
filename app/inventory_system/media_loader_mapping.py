@@ -71,6 +71,23 @@ _URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 
 _NUMERIC_RE = re.compile(r"^\d+$")
 
+# An Instagram post/reel, possibly scoped under a username and carrying query params
+# (e.g. ".../assad_motors/reel/ABC123/?hl=en"). We rewrite these to the canonical
+# ".../reel/ABC123/" form, which deep-links to the EXACT reel on mobile instead of
+# opening the Instagram app's home/profile. Profile-only links are left unchanged.
+_IG_POST_RE = re.compile(
+    r"instagram\.com/(?:[^/?#]+/)?(reel|reels|p|tv)/([^/?#]+)", re.IGNORECASE)
+
+
+def _canonical_instagram(url: str) -> str:
+    m = _IG_POST_RE.search(url or "")
+    if not m:
+        return url
+    kind = m.group(1).lower()
+    if kind == "reels":
+        kind = "reel"
+    return f"https://www.instagram.com/{kind}/{m.group(2)}/"
+
 
 def _media_keyword(upper: str) -> Optional[str]:
     """Return the media keyword a header begins with, but ONLY when it is a real
@@ -164,6 +181,8 @@ def build_media_for_row(registration_no: str, row: Tuple[Any, ...],
             url = _norm(value)
             if not url or not _URL_RE.match(url):
                 continue
+            if media_type == MediaType.INSTAGRAM:
+                url = _canonical_instagram(url)       # deep-link to the exact reel
             out.append(InventoryMedia(
                 registration_no=registration_no,
                 media_type=media_type,
@@ -190,12 +209,31 @@ def read_media_index(path: str, sheet: str = DNJ_SHEET) -> Dict[str, List[Invent
             raise ValueError(f"Sheet '{sheet}' not found in {path}. Sheets: {wb.sheetnames}")
         ws = wb[sheet]
 
-        # Read the header row via iter_rows rather than ws.max_column: in
-        # read_only mode openpyxl returns None for max_column when the writer omits
-        # the cached <dimension> (ONLYOFFICE's save does), which would crash the
-        # `range(1, None + 1)`. iter_rows yields the row's real populated cells.
-        header = list(next(ws.iter_rows(min_row=HEADER_ROW, max_row=HEADER_ROW,
-                                        values_only=True), ()))
+        # Read the header via iter_rows rather than ws.max_column: in read_only mode
+        # openpyxl returns None for max_column when the writer omits the cached
+        # <dimension> (ONLYOFFICE's save does). iter_rows yields the real cells.
+        #
+        # MERGE the two header rows: some owner templates put the media KEYWORD
+        # ("INSTAGRAM 1", "youtube") in the row ABOVE the data-header row, leaving
+        # only the slot numbers ("2","3",...) in HEADER_ROW. For each column, prefer
+        # the row-above cell when it is a recognised media keyword; otherwise use the
+        # HEADER_ROW cell. This reads both the old single-row and the new split-row
+        # layouts without breaking CAR NUMB / other column detection.
+        row_hdr = list(next(ws.iter_rows(min_row=HEADER_ROW, max_row=HEADER_ROW,
+                                         values_only=True), ()))
+        row_above = []
+        if HEADER_ROW > 1:
+            row_above = list(next(ws.iter_rows(min_row=HEADER_ROW - 1,
+                                               max_row=HEADER_ROW - 1,
+                                               values_only=True), ()))
+        header = []
+        for i in range(max(len(row_hdr), len(row_above))):
+            hv = row_hdr[i] if i < len(row_hdr) else None
+            av = row_above[i] if i < len(row_above) else None
+            if av is not None and _media_keyword(_norm(av).upper()):
+                header.append(av)
+            else:
+                header.append(hv)
         layout = detect_media_layout(header)
         if not layout.has_media_columns() or layout.car_col is None:
             return {}
