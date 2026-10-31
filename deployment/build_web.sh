@@ -22,6 +22,10 @@ cp app/chat_app/app.js     "$WEB/"
 cp app/chat_app/style.css  "$WEB/"
 cp app/chat_app/config.js  "$WEB/"
 
+# Assad Motors FINANCIAL — internal team console (separate link: /financial/)
+mkdir -p "$WEB/financial"
+cp app/financial_app/index.html "$WEB/financial/index.html"
+
 # owner / developer / media / inventory panels + the shared auth guard
 cp app/inventory_system/*.html        "$WEB/inventory_system/"
 cp app/inventory_system/auth_guard.js "$WEB/inventory_system/"
