@@ -376,9 +376,9 @@
     }
 
     // ── VIEW ROUTING ──
-    function showHome(){ el("resultView").style.display="none"; el("homeView").style.display=""; window.scrollTo(0,0); }
+    function showHome(){ el("resultView").style.display="none"; el("homeView").style.display="block"; window.scrollTo(0,0); }
     function openResult(title, sub){
-      el("homeView").style.display="none"; el("resultView").style.display="";
+      el("homeView").style.display="none"; el("resultView").style.display="block";
       el("rvTitle").textContent=title; el("rvSub").textContent=sub||"";
       el("rvBody").innerHTML='<div class="loading">Loading…</div>'; window.scrollTo(0,0);
     }
