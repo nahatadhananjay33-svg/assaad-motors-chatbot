@@ -46,6 +46,8 @@ import auth
 import audit
 import developer_auth
 import developer_dashboard
+import financial_auth
+import financial_api
 from security import SecurityGate, RateLimiter
 
 ACCESS_LOG = _build_logger()
@@ -152,6 +154,26 @@ def route(method: str, path: str, body: bytes, service: ChatService,
             return 500, {"error": "developer_failed",
                          "detail": "Monitoring query failed."}
         return 404, {"error": "not_found", "detail": f"No route for {method} {path}."}
+
+    # ── Assad Motors Financial (internal console) ──
+    # Its OWN Owner/Finance-only authorization (financial_auth). Read-only JSON
+    # over the SAME live workbook as the customer bot, exposing the financial
+    # columns. The /financial/ PAGE itself is a static file served by nginx;
+    # ONLY the /financial/api/* data endpoints route here.
+    if path == "/financial/api" or path.startswith("/financial/api/"):
+        denial = financial_auth.authorize(session_token)
+        if denial is not None:
+            _log(ACCESS_LOG, logging.WARNING, "financial_denied",
+                 path=path, status=denial[0])
+            return denial
+        subpath = (path[len("/financial/api/"):]
+                   if path.startswith("/financial/api/") else "")
+        try:
+            return financial_api.handle(method, subpath, query_string)
+        except Exception as e:
+            _log(ACCESS_LOG, logging.ERROR, "financial_error", path=path, error=str(e))
+            return 500, {"error": "financial_failed",
+                         "detail": "Financial query failed."}
 
     # ── Phase 10C: role-based permission gate (single choke point) ──
     # Identity is the logged-in session (Phase 10D); the legacy X-Acting-User

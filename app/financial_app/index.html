@@ -1,9 +1,10 @@
 <!DOCTYPE html>
-<!-- Assad Motors FINANCIAL — internal team console (homepage / front-end only).
-     Separate link from the customer chatbot. No customer data here.
-     Plain HTML/CSS/JS, no frameworks. Styled to match app/chat_app.
-     Backend (vector/embedding column matching) wired later — these buttons are
-     quick-action prompts that will feed the Financial engine. -->
+<!-- Assad Motors FINANCIAL — internal team console.
+     Separate link from the customer chatbot. Reads the SAME live workbook via
+     the gated JSON API at /financial/api/* (Owner / Finance Staff only).
+     Auth is handled INLINE (shared localStorage auth_token on this origin), so
+     if you're already signed into the Owner panel it just works.
+     Plain HTML/CSS/JS, no frameworks. -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -14,7 +15,6 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect x='4' y='4' width='92' height='92' rx='22' fill='%230f766e'/><text x='50' y='68' font-size='52' text-anchor='middle' fill='white' font-family='Arial' font-weight='bold'>A</text></svg>" />
   <style>
     :root{
-      --blue:#2563eb; --blue-dark:#1d4ed8; --blue-soft:#eff4ff;
       --teal:#0f766e; --teal-dark:#0b5c55; --teal-soft:#e7f6f3;
       --emerald:#0f9d6b; --red:#b42318; --amber:#b45309;
       --ink:#1f2933; --ink-soft:#52606d; --muted:#9aa5b1;
@@ -32,7 +32,7 @@
     }
     button{font:inherit;cursor:pointer;}
     svg{display:block;}
-    a{color:inherit;}
+    a{color:var(--teal-dark);}
 
     /* ── Topbar ── */
     header#topbar{
@@ -50,118 +50,132 @@
     }
     #brandName{font-weight:800; font-size:16px; line-height:1.1;}
     #brandTag{font-size:11.5px; color:var(--ink-soft); margin-top:1px;}
+    #whoami{margin-left:auto; display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--ink-soft);}
     #internalPill{
-      margin-left:auto; display:inline-flex; align-items:center; gap:6px;
+      display:inline-flex; align-items:center; gap:6px;
       padding:7px 12px; border-radius:999px;
       background:#fff4ed; color:var(--red); border:1px solid #f6d8cc;
       font-size:12px; font-weight:800; letter-spacing:.02em; white-space:nowrap;
     }
     #internalPill svg{width:14px;height:14px;}
+    #logoutBtn{background:none;border:1px solid var(--grey-line);border-radius:8px;padding:6px 11px;color:var(--ink-soft);font-size:12.5px;}
+    #logoutBtn:hover{background:var(--grey-bg);}
 
     /* ── Page ── */
-    main{max-width:860px; margin:0 auto; padding:30px 18px 48px;}
-    .hero{text-align:center; margin-bottom:22px;}
-    .hero .emoji{font-size:42px;}
-    .hero h1{font-size:28px; font-weight:800; letter-spacing:-.01em; margin:10px 0 6px;}
-    .hero p{color:var(--ink-soft); font-size:15px; margin:0 auto; max-width:560px;}
+    main{max-width:900px; margin:0 auto; padding:26px 18px 48px;}
+    .hero{text-align:center; margin-bottom:18px;}
+    .hero .emoji{font-size:40px;}
+    .hero h1{font-size:26px; font-weight:800; letter-spacing:-.01em; margin:8px 0 6px;}
+    .hero p{color:var(--ink-soft); font-size:14.5px; margin:0 auto; max-width:560px;}
 
-    /* ── Ask bar (beta) ── */
-    .askwrap{margin:22px auto 10px; max-width:640px;}
-    .ask{
-      display:flex; align-items:center; gap:10px;
-      background:#fff; border:1px solid var(--grey-line); border-radius:14px;
-      padding:10px 12px; box-shadow:0 2px 10px rgba(16,24,40,.04);
-      transition:border-color .15s, box-shadow .15s;
-    }
+    .askwrap{margin:18px auto 6px; max-width:640px;}
+    .ask{display:flex; align-items:center; gap:10px; background:#fff;
+      border:1px solid var(--grey-line); border-radius:14px; padding:10px 12px;
+      box-shadow:0 2px 10px rgba(16,24,40,.04); transition:border-color .15s,box-shadow .15s;}
     .ask:focus-within{border-color:var(--teal); box-shadow:0 2px 14px rgba(15,118,110,.12);}
     .ask svg.q{width:20px;height:20px;color:var(--teal);flex:0 0 auto;}
-    .ask input{
-      flex:1; border:0; outline:0; background:none; font-size:15px; color:var(--ink);
-    }
+    .ask input{flex:1; border:0; outline:0; background:none; font-size:15px; color:var(--ink);}
     .ask input::placeholder{color:var(--muted);}
-    .ask button{
-      flex:0 0 auto; width:40px; height:40px; border-radius:11px; border:0;
+    .ask button{flex:0 0 auto; width:40px; height:40px; border-radius:11px; border:0;
       background:linear-gradient(135deg,var(--teal),var(--teal-dark)); color:#fff;
-      display:flex; align-items:center; justify-content:center;
-    }
+      display:flex; align-items:center; justify-content:center;}
     .ask button svg{width:20px;height:20px;}
     .beta{text-align:center; font-size:12px; color:var(--muted); margin:8px 0 0;}
 
-    /* ── Section label ── */
-    .seclabel{
-      font-size:11.5px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
-      color:var(--muted); margin:28px 4px 12px;
-    }
+    .seclabel{font-size:11.5px; font-weight:800; letter-spacing:.07em; text-transform:uppercase;
+      color:var(--muted); margin:24px 4px 12px;}
 
-    /* ── Action grid (matches customer chips, bigger) ── */
-    .grid{
-      display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
-      gap:14px;
-    }
-    .tile{
-      display:flex; align-items:flex-start; gap:13px; text-align:left;
-      padding:16px; border-radius:var(--radius);
-      border:1px solid var(--grey-line); background:#fff;
-      transition:border-color .15s, background .15s, transform .1s, box-shadow .15s;
-    }
-    .tile:hover{
-      border-color:var(--teal); background:var(--teal-soft);
-      transform:translateY(-2px); box-shadow:0 6px 18px rgba(15,118,110,.10);
-    }
-    .tile .ic{
-      width:44px; height:44px; border-radius:12px; flex:0 0 auto;
-      display:flex; align-items:center; justify-content:center;
-      background:var(--teal-soft); color:var(--teal-dark);
-    }
+    .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:14px;}
+    .tile{display:flex; align-items:flex-start; gap:13px; text-align:left; padding:16px;
+      border-radius:var(--radius); border:1px solid var(--grey-line); background:#fff;
+      transition:border-color .15s,background .15s,transform .1s,box-shadow .15s;}
+    .tile:hover{border-color:var(--teal); background:var(--teal-soft); transform:translateY(-2px); box-shadow:0 6px 18px rgba(15,118,110,.10);}
+    .tile .ic{width:44px; height:44px; border-radius:12px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; background:var(--teal-soft); color:var(--teal-dark);}
     .tile .ic svg{width:23px;height:23px;}
-    .tile .txt{min-width:0;}
     .tile .t{font-weight:700; font-size:15.5px; line-height:1.2;}
     .tile .s{font-size:12.5px; color:var(--ink-soft); margin-top:3px; line-height:1.3;}
-    /* accent variants */
     .tile.profit .ic{background:#e7f7ef;color:var(--emerald);}
-    .tile.loss   .ic{background:#fdecea;color:var(--red);}
+    .tile.loss .ic{background:#fdecea;color:var(--red);}
 
-    /* ── Summary (full-width highlight) ── */
-    .summary{
-      margin-top:14px; display:flex; align-items:center; gap:16px;
-      padding:20px; border-radius:var(--radius); text-align:left;
-      width:100%; border:1px solid transparent;
+    .summary{margin-top:14px; display:flex; align-items:center; gap:16px; padding:20px;
+      border-radius:var(--radius); text-align:left; width:100%; border:1px solid transparent;
       background:linear-gradient(135deg,var(--teal),var(--teal-dark)); color:#fff;
-      transition:transform .1s, box-shadow .15s;
-      box-shadow:0 10px 24px rgba(15,118,110,.22);
-    }
+      transition:transform .1s,box-shadow .15s; box-shadow:0 10px 24px rgba(15,118,110,.22);}
     .summary:hover{transform:translateY(-2px); box-shadow:0 14px 30px rgba(15,118,110,.30);}
-    .summary .ic{
-      width:50px; height:50px; border-radius:13px; flex:0 0 auto;
-      display:flex; align-items:center; justify-content:center;
-      background:rgba(255,255,255,.18); color:#fff;
-    }
+    .summary .ic{width:50px; height:50px; border-radius:13px; flex:0 0 auto; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.18); color:#fff;}
     .summary .ic svg{width:27px;height:27px;}
     .summary .t{font-weight:800; font-size:18px;}
     .summary .s{font-size:13px; opacity:.92; margin-top:3px;}
     .summary .go{margin-left:auto; font-size:22px; opacity:.9;}
 
-    footer{
-      text-align:center; color:var(--muted); font-size:12px;
-      margin-top:34px; line-height:1.5;
-    }
+    /* ── Result view ── */
+    #resultView{display:none;}
+    .rv-head{display:flex; align-items:center; gap:12px; margin-bottom:6px;}
+    .backBtn{display:inline-flex; align-items:center; gap:6px; border:1px solid var(--grey-line);
+      background:#fff; border-radius:10px; padding:8px 13px; font-size:14px; font-weight:600; color:var(--ink);}
+    .backBtn:hover{background:var(--teal-soft); border-color:var(--teal);}
+    .backBtn svg{width:16px;height:16px;}
+    .rv-title{font-size:20px; font-weight:800;}
+    .rv-sub{color:var(--ink-soft); font-size:13.5px; margin:2px 0 16px;}
 
-    /* ── toast ── */
-    #toast{
-      position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
-      background:#111827; color:#fff; padding:12px 18px; border-radius:12px;
-      font-size:14px; box-shadow:0 10px 30px rgba(0,0,0,.25);
-      opacity:0; pointer-events:none; transition:opacity .2s, transform .2s; z-index:50;
-      max-width:88vw; text-align:center;
-    }
+    .chips{display:flex; flex-wrap:wrap; gap:10px; margin-bottom:8px;}
+    .chip{padding:10px 15px; border-radius:11px; border:1px solid var(--grey-line); background:#fff;
+      font-size:14px; color:var(--ink); font-weight:600; transition:border-color .15s,background .15s,transform .1s;}
+    .chip:hover{border-color:var(--teal); background:var(--teal-soft); transform:translateY(-1px);}
+    .chip .cnt{color:var(--teal-dark); font-weight:800; margin-left:5px;}
+
+    .totalsbar{display:flex; flex-wrap:wrap; gap:18px; align-items:baseline;
+      background:var(--teal-soft); border:1px solid #cfe9e3; border-radius:12px; padding:14px 18px; margin:6px 0 16px;}
+    .totalsbar b{font-size:20px; color:var(--teal-dark);}
+    .totalsbar span{font-size:13px; color:var(--ink-soft);}
+
+    .cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px;}
+    .fcard{border:1px solid var(--grey-line); border-radius:14px; background:#fff; padding:15px 16px;
+      box-shadow:0 1px 4px rgba(16,24,40,.04);}
+    .fcard .top{display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:10px;}
+    .fcard .ctitle{font-weight:800; font-size:15px; line-height:1.25;}
+    .fcard .creg{font-size:12px; color:var(--ink-soft); margin-top:2px; font-variant-numeric:tabular-nums;}
+    .fcard .sold{font-size:10.5px; font-weight:800; color:var(--amber); background:#fdf6e3; border:1px solid #f1dca6; border-radius:6px; padding:3px 7px; white-space:nowrap;}
+    .frow{display:flex; justify-content:space-between; gap:12px; font-size:13px; padding:4px 0; border-top:1px dashed #eef1f4;}
+    .frow:first-of-type{border-top:0;}
+    .frow .k{color:var(--ink-soft);}
+    .frow .v{font-weight:600; text-align:right; font-variant-numeric:tabular-nums;}
+    .v.pos{color:var(--emerald);} .v.neg{color:var(--red);}
+    .divider{height:1px;background:var(--grey-line);margin:9px 0;}
+
+    .loading,.empty{padding:40px 10px; text-align:center; color:var(--muted); font-size:14px;}
+    .err{padding:16px; border-radius:12px; background:#fdecea; color:var(--red); font-size:14px; font-weight:600;}
+
+    footer{text-align:center; color:var(--muted); font-size:12px; margin-top:34px; line-height:1.5;}
+    #toast{position:fixed; left:50%; bottom:26px; transform:translateX(-50%) translateY(20px);
+      background:#111827; color:#fff; padding:12px 18px; border-radius:12px; font-size:14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.25); opacity:0; pointer-events:none;
+      transition:opacity .2s,transform .2s; z-index:50; max-width:88vw; text-align:center;}
     #toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
 
+    /* ── Auth gate ── */
+    #gate{position:fixed; inset:0; z-index:100; background:linear-gradient(160deg,#0b5c55,#0f766e);
+      display:none; align-items:center; justify-content:center; padding:20px;}
+    #gate.show{display:flex;}
+    .gcard{background:#fff; border-radius:18px; padding:30px 26px; width:100%; max-width:380px; box-shadow:0 20px 50px rgba(0,0,0,.3);}
+    .gcard h2{margin:0 0 4px; font-size:20px;}
+    .gcard p{margin:0 0 18px; color:var(--ink-soft); font-size:13.5px;}
+    .gcard label{display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin:12px 0 5px;}
+    .gcard input{width:100%; padding:11px 13px; border:1px solid var(--grey-line); border-radius:10px; font-size:15px;}
+    .gcard input:focus{outline:0; border-color:var(--teal);}
+    .gcard button{width:100%; margin-top:18px; padding:12px; border:0; border-radius:11px; color:#fff; font-weight:700; font-size:15px;
+      background:linear-gradient(135deg,var(--teal),var(--teal-dark));}
+    .gcard button:disabled{opacity:.6;}
+    .gmsg{margin-top:12px; font-size:13px; text-align:center; min-height:18px;}
+    .gmsg.err{color:var(--red);} .gmsg.info{color:var(--ink-soft);}
+
     @media (max-width:560px){
-      .hero h1{font-size:23px;}
+      .hero h1{font-size:22px;}
       .grid{grid-template-columns:repeat(2,1fr); gap:11px;}
       .tile{flex-direction:column; gap:9px; padding:13px;}
-      .tile .ic{width:40px;height:40px;}
       .summary{flex-wrap:wrap;}
+      .cards{grid-template-columns:1fr;}
+      #whoami .wtext{display:none;}
     }
   </style>
 </head>
@@ -173,106 +187,340 @@
       <div id="brandName">Assad Motors</div>
       <div id="brandTag">Financial Console</div>
     </div>
-    <span id="internalPill">
-      <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="2"/></svg>
-      INTERNAL · TEAM ONLY
-    </span>
+    <div id="whoami">
+      <span id="internalPill">
+        <svg viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="2"/></svg>
+        INTERNAL
+      </span>
+      <span class="wtext" id="userLabel"></span>
+      <button id="logoutBtn" style="display:none">Logout</button>
+    </div>
   </header>
 
   <main>
-    <section class="hero">
-      <div class="emoji">📊</div>
-      <h1>Assad Motors Financial</h1>
-      <p>Internal inventory &amp; finance assistant. Ask about profit, stock, buyers, sellers, days in house and more — for the team, not for customers.</p>
-    </section>
+    <!-- HOME -->
+    <div id="homeView">
+      <section class="hero">
+        <div class="emoji">📊</div>
+        <h1>Assad Motors Financial</h1>
+        <p>Internal inventory &amp; finance console. Live from the same workbook — profit, stock, buyers, sellers, days in house and more.</p>
+      </section>
 
-    <div class="askwrap">
-      <form class="ask" id="askForm">
-        <svg class="q" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
-        <input id="askInput" type="text" autocomplete="off"
-               placeholder="Ask anything — e.g. “this month's total gross profit”" />
-        <button type="submit" aria-label="Ask">
-          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </form>
-      <p class="beta">⚙️ Smart search is being wired to the Financial engine — buttons below are quick starters.</p>
+      <div class="askwrap">
+        <form class="ask" id="askForm">
+          <svg class="q" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="m20 20-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          <input id="askInput" type="text" autocomplete="off" placeholder="Ask anything — e.g. “this month's total gross profit”" />
+          <button type="submit" aria-label="Ask">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </form>
+        <p class="beta">⚙️ Smart free-text search connects next — buttons below are live now.</p>
+      </div>
+
+      <div class="seclabel">Quick actions</div>
+      <div class="grid" id="grid"></div>
+
+      <button class="summary" data-action="summary">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 3v18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 14l3-3 3 2 5-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div>
+          <div class="t">Total Stock Summary</div>
+          <div class="s">Total stock value, investment, counts &amp; locations at a glance</div>
+        </div>
+        <div class="go">→</div>
+      </button>
+
+      <footer>
+        🔒 Internal tool for the Assad Motors team only — not shared with customers.
+      </footer>
     </div>
 
-    <div class="seclabel">Quick actions</div>
-    <div class="grid" id="grid"><!-- tiles injected --></div>
-
-    <button class="summary" data-q="Total stock summary — full portfolio value and profit/loss">
-      <div class="ic">
-        <svg viewBox="0 0 24 24" fill="none"><path d="M3 3v18h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7 14l3-3 3 2 5-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <!-- RESULTS -->
+    <div id="resultView">
+      <div class="rv-head">
+        <button class="backBtn" id="backBtn"><svg viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Back</button>
+        <div>
+          <div class="rv-title" id="rvTitle"></div>
+        </div>
       </div>
-      <div>
-        <div class="t">Total Stock Summary</div>
-        <div class="s">Complete portfolio — total stock value, investment, profit &amp; loss at a glance</div>
-      </div>
-      <div class="go">→</div>
-    </button>
-
-    <footer>
-      🔒 Internal tool for the Assad Motors team only — not shared with customers.<br/>
-      This is the homepage. Live financial answers connect in the next step.
-    </footer>
+      <div class="rv-sub" id="rvSub"></div>
+      <div id="rvBody"></div>
+    </div>
   </main>
 
   <div id="toast"></div>
 
+  <!-- AUTH GATE -->
+  <div id="gate">
+    <div class="gcard">
+      <h2>🔒 Financial Console</h2>
+      <p>Sign in with your <b>Owner</b> or <b>Finance</b> account. Internal team only.</p>
+      <form id="loginForm">
+        <label for="guser">Username</label>
+        <input id="guser" type="text" autocomplete="username" />
+        <label for="gpass">Password</label>
+        <input id="gpass" type="password" autocomplete="current-password" />
+        <button id="gbtn" type="submit">Sign in</button>
+      </form>
+      <div class="gmsg" id="gmsg"></div>
+    </div>
+  </div>
+
   <script>
-    // Quick-action tiles — labels mirror the owner's sketch.
-    // data-q = the question each tile will send to the Financial engine later.
+  (function(){
+    "use strict";
+    var API = "";                       // same origin — nginx proxies /financial/api
+    var LS = window.localStorage;
+
+    // ── tiny helpers ──
+    function el(id){ return document.getElementById(id); }
+    function token(){ try { return LS.getItem("auth_token") || ""; } catch(e){ return ""; } }
+    function setTok(t,u,r,f){ try{ LS.setItem("auth_token",t); if(u)LS.setItem("auth_user",u); if(r)LS.setItem("auth_role",r); if(f!=null)LS.setItem("auth_full_name",f);}catch(e){} }
+    function clearTok(){ try{ ["auth_token","auth_user","auth_role","auth_full_name"].forEach(function(k){LS.removeItem(k);}); }catch(e){} }
+
+    function inr(n){
+      if(n===null||n===undefined||n==="") return "—";
+      var neg = n<0; n=Math.abs(Math.round(n));
+      var s=String(n), last3=s.slice(-3), rest=s.slice(0,-3);
+      if(rest) last3="," + last3;
+      rest=rest.replace(/\B(?=(\d{2})+(?!\d))/g,",");
+      return (neg?"-₹":"₹")+rest+last3;
+    }
+    function esc(s){ return String(s==null?"":s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c];}); }
+
+    // ── API ──
+    function apiGet(action, params){
+      var qs = params ? ("?"+Object.keys(params).map(function(k){return encodeURIComponent(k)+"="+encodeURIComponent(params[k]);}).join("&")) : "";
+      return fetch(API+"/financial/api/"+action+qs, { headers:{ "X-Session-Token": token() } })
+        .then(function(r){
+          if(r.status===401||r.status===403){ showGate(r.status===403?"This account can't open the Financial console.":""); throw new Error("auth"); }
+          return r.json().then(function(d){ if(!r.ok) throw new Error(d.detail||"Request failed"); return d; });
+        });
+    }
+
+    // ── AUTH ──
+    function showGate(msg){
+      el("gate").classList.add("show");
+      if(msg){ var m=el("gmsg"); m.textContent=msg; m.className="gmsg err"; }
+    }
+    function hideGate(){ el("gate").classList.remove("show"); }
+
+    function boot(){
+      if(!token()){ showGate(""); return; }
+      // validate token + role
+      fetch(API+"/auth/me",{ headers:{ "X-Session-Token": token() } })
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(me){
+          var role = me && me.user ? me.user.role : (me && me.role);
+          var name = me && me.user ? (me.user.full_name||me.user.username) : "";
+          if(!me){ clearTok(); showGate(""); return; }
+          if(role!=="Owner" && role!=="Finance Staff"){ showGate("This account ("+esc(role||"?")+") can't open the Financial console."); return; }
+          el("userLabel").textContent = (name||"") + (role?(" · "+role):"");
+          el("logoutBtn").style.display="";
+          hideGate(); startApp();
+        })
+        .catch(function(){ showGate(""); });
+    }
+
+    el("loginForm").addEventListener("submit", function(e){
+      e.preventDefault();
+      var u=el("guser").value.trim(), p=el("gpass").value;
+      if(!u||!p){ el("gmsg").textContent="Enter username and password."; el("gmsg").className="gmsg err"; return; }
+      el("gbtn").disabled=true; el("gmsg").textContent="Signing in…"; el("gmsg").className="gmsg info";
+      fetch(API+"/auth/login",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({username:u,password:p}) })
+        .then(function(r){ return r.json().then(function(d){return {ok:r.ok,d:d};}); })
+        .then(function(x){
+          el("gbtn").disabled=false;
+          if(!x.ok){ el("gmsg").textContent="✗ "+(x.d.detail||"Sign in failed."); el("gmsg").className="gmsg err"; return; }
+          setTok(x.d.token, x.d.user.username, x.d.user.role, x.d.user.full_name||"");
+          el("gmsg").textContent=""; boot();
+        })
+        .catch(function(ex){ el("gbtn").disabled=false; el("gmsg").textContent="Network problem: "+ex.message; el("gmsg").className="gmsg err"; });
+    });
+
+    el("logoutBtn").addEventListener("click", function(){
+      var t=token();
+      fetch(API+"/auth/logout",{method:"POST",headers:{"X-Session-Token":t}}).catch(function(){}).finally(function(){
+        clearTok(); location.reload();
+      });
+    });
+
+    // ── TILES ──
     var TILES = [
-      {key:"cardays", label:"Car Days",  sub:"Days in stock / ageing",      q:"Show cars by number of days in house (ageing stock)",
-       icon:'<path d="M8 2v4M16 2v4M3 9h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/><path d="M12 13v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
-      {key:"pex", label:"P. Ex",         sub:"Purchase &amp; expenses",     q:"Show purchase price and expenses breakdown",
-       icon:'<rect x="5" y="3" width="14" height="18" rx="2" stroke="currentColor" stroke-width="2"/><path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
-      {key:"buyer", label:"Buyer",       sub:"Buyer &amp; customer records", q:"Show buyer / customer records",
+      {action:"car_days", label:"Car Days", sub:"Days in stock / ageing",
+       icon:'<path d="M8 2v4M16 2v4M3 9h18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="3" y="4" width="18" height="17" rx="3" stroke="currentColor" stroke-width="2"/>'},
+      {action:"pey", label:"PEY", sub:"Profit ratio / % yield",
+       icon:'<circle cx="7.5" cy="7.5" r="2.5" stroke="currentColor" stroke-width="2"/><circle cx="16.5" cy="16.5" r="2.5" stroke="currentColor" stroke-width="2"/><path d="M19 5 5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
+      {action:"buyers", label:"Buyer", sub:"By investor",
        icon:'<circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="2"/><path d="M4 20c0-3.3 3.6-6 8-6s8 2.7 8 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
-      {key:"seller", label:"Seller",     sub:"Seller / investor details",   q:"Show seller and investor details",
+      {action:"sellers", label:"Seller", sub:"By seller company",
        icon:'<circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="2"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M17 8h4M19 6v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'},
-      {key:"profit", label:"Profit", cls:"profit", sub:"Gross profit &amp; yield", q:"Show gross profit and percent yield",
+      {action:"profit", label:"Profit", cls:"profit", sub:"Highest yield first",
        icon:'<path d="M3 17l6-6 4 4 7-8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 7h5v5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'},
-      {key:"loss", label:"Loss", cls:"loss", sub:"Loss-making stock",       q:"Show loss-making cars",
+      {action:"loss", label:"Loss", cls:"loss", sub:"Biggest loss first",
        icon:'<path d="M3 7l6 6 4-4 7 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M15 17h5v-5" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'},
-      {key:"stock", label:"Stock",       sub:"Current stock on hand",       q:"Show current stock on hand",
+      {action:"stock", label:"Stock", sub:"Current for-sale stock",
        icon:'<path d="M3 7l9-4 9 4-9 4-9-4Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M3 7v10l9 4 9-4V7" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M12 11v10" stroke="currentColor" stroke-width="2"/>'},
-      {key:"cars", label:"Cars",         sub:"Full car list",               q:"Show the full car list",
+      {action:"cars", label:"Cars", sub:"All cars",
        icon:'<path d="M5 16l1.5-5A2 2 0 0 1 8.4 9.6h7.2a2 2 0 0 1 1.9 1.4L19 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><rect x="3" y="16" width="18" height="4" rx="2" stroke="currentColor" stroke-width="2"/><circle cx="7.5" cy="18" r="1.1" fill="currentColor"/><circle cx="16.5" cy="18" r="1.1" fill="currentColor"/>'}
     ];
 
-    var grid = document.getElementById("grid");
-    TILES.forEach(function(t){
-      var b = document.createElement("button");
-      b.className = "tile" + (t.cls ? " " + t.cls : "");
-      b.setAttribute("data-q", t.q);
-      b.innerHTML =
-        '<div class="ic"><svg viewBox="0 0 24 24" fill="none">' + t.icon + '</svg></div>' +
-        '<div class="txt"><div class="t">' + t.label + '</div><div class="s">' + t.sub + '</div></div>';
-      grid.appendChild(b);
+    function startApp(){
+      var grid=el("grid"); grid.innerHTML="";
+      TILES.forEach(function(t){
+        var b=document.createElement("button");
+        b.className="tile"+(t.cls?" "+t.cls:""); b.setAttribute("data-action",t.action);
+        b.innerHTML='<div class="ic"><svg viewBox="0 0 24 24" fill="none">'+t.icon+'</svg></div>'+
+                    '<div class="txt"><div class="t">'+t.label+'</div><div class="s">'+t.sub+'</div></div>';
+        grid.appendChild(b);
+      });
+    }
+
+    // ── VIEW ROUTING ──
+    function showHome(){ el("resultView").style.display="none"; el("homeView").style.display=""; window.scrollTo(0,0); }
+    function openResult(title, sub){
+      el("homeView").style.display="none"; el("resultView").style.display="";
+      el("rvTitle").textContent=title; el("rvSub").textContent=sub||"";
+      el("rvBody").innerHTML='<div class="loading">Loading…</div>'; window.scrollTo(0,0);
+    }
+    el("backBtn").addEventListener("click", showHome);
+
+    // ── RENDERERS ──
+    function cardHTML(c){
+      function row(k,v,cls){ return '<div class="frow"><span class="k">'+k+'</span><span class="v'+(cls?" "+cls:"")+'">'+v+'</span></div>'; }
+      var pl = c.profit_loss;
+      var plCls = pl==null?"":(pl<0?"neg":"pos");
+      var y = c.percent_yield;
+      return '<div class="fcard">'+
+        '<div class="top"><div><div class="ctitle">'+esc(c.title)+'</div><div class="creg">'+esc(c.car_numb)+(c.location?(" · "+esc(c.location)):"")+'</div></div>'+
+        (c.sold?'<span class="sold">SOLD · UNDELIVERED</span>':'')+'</div>'+
+        row("Purchase date", esc(c.purchase_date||"—"))+
+        row("Days in house", c.days_in_house==null?"—":c.days_in_house)+
+        row("Investor", esc(c.investor||"—"))+
+        row("Bought from", esc(c.bought_from||"—"))+
+        (c.app_id?row("App ID", esc(c.app_id)):"")+
+        '<div class="divider"></div>'+
+        row("Purchase price", inr(c.purchase_price))+
+        row("Expenses", inr(c.expenses))+
+        row("Add. expenses", inr(c.add_expenses))+
+        row("Total cost", inr(c.total_cost))+
+        row("Sale value", inr(c.sale_value))+
+        row("Profit / Loss", inr(pl), plCls)+
+        row("P-ratio (yield)", y==null?"—":(y+""), plCls)+
+      '</div>';
+    }
+    function renderCars(cars){
+      if(!cars||!cars.length) return '<div class="empty">No cars found.</div>';
+      return '<div class="cards">'+cars.map(cardHTML).join("")+'</div>';
+    }
+    function renderChips(options, onpick){
+      var wrap=document.createElement("div"); wrap.className="chips";
+      options.forEach(function(o){
+        var b=document.createElement("button"); b.className="chip";
+        b.innerHTML=esc(o.label)+(o.count!=null?'<span class="cnt">'+o.count+'</span>':"");
+        b.addEventListener("click",function(){ onpick(o); });
+        wrap.appendChild(b);
+      });
+      return wrap;
+    }
+    function fail(msg){ el("rvBody").innerHTML='<div class="err">'+esc(msg||"Something went wrong.")+'</div>'; }
+
+    // ── ACTIONS ──
+    function doCarDays(){
+      openResult("Car Days","Pick a cut-off — shows cars purchased on or before it, oldest first.");
+      apiGet("car_days").then(function(d){
+        var body=el("rvBody"); body.innerHTML="";
+        body.appendChild(renderChips(d.options,function(o){
+          openResult("Car Days","Older than "+o.key.replace("ALL","— all cars"));
+          apiGet("car_days",{cutoff:o.key}).then(function(r){
+            el("rvSub").textContent=(o.key==="ALL"?"All cars":"Purchased on/before "+o.key)+" · "+r.cars.length+" cars";
+            el("rvBody").innerHTML=renderCars(r.cars);
+          }).catch(function(e){ if(e.message!=="auth") fail(e.message); });
+        }));
+      }).catch(function(e){ if(e.message!=="auth") fail(e.message); });
+    }
+    function doPey(){
+      openResult("PEY — Profit ratio","Pick a yield band.");
+      apiGet("pey").then(function(d){
+        var body=el("rvBody"); body.innerHTML="";
+        body.appendChild(renderChips(d.options,function(o){
+          openResult("PEY "+o.label,"");
+          apiGet("pey",{bucket:o.key}).then(function(r){
+            el("rvSub").textContent=r.cars.length+" cars · yield "+o.label;
+            el("rvBody").innerHTML=renderCars(r.cars);
+          }).catch(function(e){ if(e.message!=="auth") fail(e.message); });
+        }));
+      }).catch(function(e){ if(e.message!=="auth") fail(e.message); });
+    }
+    function doGroup(kind){   // buyers / sellers
+      var isBuyer = kind==="buyers";
+      openResult(isBuyer?"Buyer — by investor":"Seller — by company","Pick one to see its cars and totals.");
+      apiGet(kind).then(function(d){
+        var list = isBuyer ? d.buyers : d.sellers;
+        var body=el("rvBody"); body.innerHTML="";
+        body.appendChild(renderChips(list,function(o){
+          openResult(esc(o.label),"");
+          apiGet(isBuyer?"buyer":"seller",{key:o.key}).then(function(r){
+            el("rvBody").innerHTML=
+              '<div class="totalsbar"><div><b>'+r.count+'</b> <span>cars</span></div>'+
+              '<div><b>'+inr(r.total_investment)+'</b> <span>total investment (cost)</span></div></div>'+
+              renderCars(r.cars);
+            el("rvSub").textContent="";
+          }).catch(function(e){ if(e.message!=="auth") fail(e.message); });
+        }));
+      }).catch(function(e){ if(e.message!=="auth") fail(e.message); });
+    }
+    function doList(action, title, sub){
+      openResult(title, sub||"");
+      apiGet(action).then(function(r){
+        el("rvSub").textContent=r.cars.length+" cars"+(sub?(" · "+sub):"");
+        el("rvBody").innerHTML=renderCars(r.cars);
+      }).catch(function(e){ if(e.message!=="auth") fail(e.message); });
+    }
+    function doSummary(){
+      openResult("Total Stock Summary","");
+      apiGet("summary").then(function(s){
+        var locs = (s.locations||[]).map(function(l){ return '<div class="frow"><span class="k">'+esc(l.location)+'</span><span class="v">'+l.count+' car'+(l.count===1?"":"s")+'</span></div>'; }).join("");
+        el("rvBody").innerHTML=
+          '<div class="totalsbar">'+
+          '<div><b>'+s.total_cars+'</b> <span>total cars</span></div>'+
+          '<div><b>'+s.for_sale_count+'</b> <span>for sale</span></div>'+
+          '<div><b>'+s.sold_undelivered_count+'</b> <span>sold · undelivered</span></div></div>'+
+          '<div class="cards">'+
+            '<div class="fcard"><div class="ctitle" style="margin-bottom:8px">Stock value</div>'+
+              '<div class="frow"><span class="k">Cost of for-sale stock</span><span class="v">'+inr(s.total_cost_for_sale)+'</span></div>'+
+              '<div class="frow"><span class="k">Cost of sold (undelivered)</span><span class="v">'+inr(s.total_cost_sold)+'</span></div>'+
+              '<div class="frow"><span class="k">Bank balances</span><span class="v">coming soon</span></div>'+
+            '</div>'+
+            '<div class="fcard"><div class="ctitle" style="margin-bottom:8px">Cars by location</div>'+(locs||'<div class="empty">—</div>')+'</div>'+
+          '</div>';
+      }).catch(function(e){ if(e.message!=="auth") fail(e.message); });
+    }
+
+    // ── click dispatch ──
+    document.addEventListener("click", function(e){
+      var t=e.target.closest("[data-action]"); if(!t) return;
+      var a=t.getAttribute("data-action");
+      if(a==="car_days") doCarDays();
+      else if(a==="pey") doPey();
+      else if(a==="buyers") doGroup("buyers");
+      else if(a==="sellers") doGroup("sellers");
+      else if(a==="profit") doList("profit","Profit — highest yield first");
+      else if(a==="loss") doList("loss","Loss — biggest loss first");
+      else if(a==="stock") doList("stock","Stock — for-sale cars");
+      else if(a==="cars") doList("cars","All cars");
+      else if(a==="summary") doSummary();
     });
 
-    // Toast + placeholder behaviour (backend not wired yet).
-    var toast = document.getElementById("toast"), toastT;
-    function showToast(msg){
-      toast.textContent = msg;
-      toast.classList.add("show");
-      clearTimeout(toastT);
-      toastT = setTimeout(function(){ toast.classList.remove("show"); }, 2600);
-    }
-    function ask(q){
-      showToast("Coming soon — “" + q + "” will run on the Financial engine.");
-    }
-    document.addEventListener("click", function(e){
-      var el = e.target.closest("[data-q]");
-      if (el) ask(el.getAttribute("data-q"));
-    });
-    document.getElementById("askForm").addEventListener("submit", function(e){
+    // ask bar — placeholder until the free-text engine lands
+    el("askForm").addEventListener("submit", function(e){
       e.preventDefault();
-      var v = document.getElementById("askInput").value.trim();
-      if (v) ask(v);
+      var v=el("askInput").value.trim(); if(!v) return;
+      var to=el("toast"); to.textContent="Smart search coming soon — use the buttons for now."; to.classList.add("show");
+      setTimeout(function(){ to.classList.remove("show"); }, 2600);
     });
+
+    boot();
+  })();
   </script>
 </body>
 </html>
