@@ -163,6 +163,12 @@
     .gcard label{display:block; font-size:12.5px; font-weight:700; color:var(--ink-soft); margin:12px 0 5px;}
     .gcard input{width:100%; padding:11px 13px; border:1px solid var(--grey-line); border-radius:10px; font-size:15px;}
     .gcard input:focus{outline:0; border-color:var(--teal);}
+    .pwwrap{position:relative;}
+    .pwwrap input{padding-right:44px;}
+    #pwToggle{position:absolute; right:6px; top:50%; transform:translateY(-50%);
+      background:none; border:0; padding:7px; border-radius:8px; color:var(--muted); cursor:pointer; line-height:0;}
+    #pwToggle:hover{color:var(--teal-dark); background:var(--teal-soft);}
+    #pwToggle svg{width:20px; height:20px;}
     .gcard button{width:100%; margin-top:18px; padding:12px; border:0; border-radius:11px; color:#fff; font-weight:700; font-size:15px;
       background:linear-gradient(135deg,var(--teal),var(--teal-dark));}
     .gcard button:disabled{opacity:.6;}
@@ -258,7 +264,12 @@
         <label for="guser">Username</label>
         <input id="guser" type="text" autocomplete="username" />
         <label for="gpass">Password</label>
-        <input id="gpass" type="password" autocomplete="current-password" />
+        <div class="pwwrap">
+          <input id="gpass" type="password" autocomplete="current-password" />
+          <button type="button" id="pwToggle" aria-label="Show password" title="Show password">
+            <svg id="pwIcon" viewBox="0 0 24 24" fill="none"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg>
+          </button>
+        </div>
         <button id="gbtn" type="submit">Sign in</button>
       </form>
       <div class="gmsg" id="gmsg"></div>
@@ -335,6 +346,18 @@
           el("gmsg").textContent=""; boot();
         })
         .catch(function(ex){ el("gbtn").disabled=false; el("gmsg").textContent="Network problem: "+ex.message; el("gmsg").className="gmsg err"; });
+    });
+
+    // show / hide password
+    var EYE='<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/>';
+    var EYEOFF='<path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10.6 10.6a3 3 0 0 0 4.2 4.2M9.9 4.6A10.9 10.9 0 0 1 12 5c6.5 0 10 7 10 7a17.8 17.8 0 0 1-3.2 4M6.1 6.1A17.8 17.8 0 0 0 2 12s3.5 7 10 7a10.9 10.9 0 0 0 4.1-.8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+    el("pwToggle").addEventListener("click", function(){
+      var inp=el("gpass"), show=inp.type==="password";
+      inp.type=show?"text":"password";
+      el("pwIcon").innerHTML=show?EYEOFF:EYE;
+      this.setAttribute("aria-label", show?"Hide password":"Show password");
+      this.setAttribute("title", show?"Hide password":"Show password");
+      inp.focus();
     });
 
     el("logoutBtn").addEventListener("click", function(){
